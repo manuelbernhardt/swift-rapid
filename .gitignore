@@ -3,5 +3,4 @@
 /Packages
 /*.xcodeproj
 .idea
-*.pb.swift
 Package.resolved
