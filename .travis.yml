@@ -1,0 +1,6 @@
+osx_image: xcode11.4
+language: swift
+script:
+  - swift --version
+  - swift package update
+  - swift test
