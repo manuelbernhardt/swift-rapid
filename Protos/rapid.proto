@@ -1,0 +1,188 @@
+syntax = "proto3";
+
+service MembershipService {
+  rpc sendRequest (RapidRequest) returns (RapidResponse) {}
+}
+
+message Endpoint
+{
+    bytes hostname = 1;
+    int32 port = 2;
+}
+
+
+// All-in-one message type.
+message RapidRequest
+{
+   oneof content {
+        JoinMessage joinMessage = 1;
+        BatchedAlertMessage batchedAlertMessage = 2;
+        ProbeMessage probeMessage = 3;
+        FastRoundPhase2bMessage fastRoundPhase2bMessage = 4;
+        Phase1aMessage phase1aMessage = 5;
+        Phase1bMessage phase1bMessage = 6;
+        Phase2aMessage phase2aMessage = 7;
+        Phase2bMessage phase2bMessage = 8;
+        LeaveMessage leaveMessage = 9;
+   }
+}
+
+message RapidResponse
+{
+   oneof content {
+        JoinResponse joinResponse = 1;
+        Response response = 2;
+        ConsensusResponse consensusResponse = 3;
+        ProbeResponse probeResponse = 4;
+   }
+}
+
+
+// ******* Join protocol messages *******
+
+message NodeId
+{
+   int64 high = 1;
+   int64 low = 2;
+}
+
+message JoinMessage
+{
+   Endpoint sender = 1;
+   NodeId nodeId = 2;
+   Metadata metadata = 3;
+}
+
+message JoinResponse
+{
+   Endpoint sender = 1;
+   JoinStatusCode statusCode = 2;
+   int64 configurationId = 3;
+   repeated Endpoint endpoints = 4;
+   repeated NodeId identifiers = 5;
+   repeated Endpoint metadataKeys = 6;
+   repeated Metadata metadataValues = 7;
+}
+
+enum JoinStatusCode {
+    HOSTNAME_ALREADY_IN_RING = 0;
+    UUID_ALREADY_IN_RING = 1;
+    SAME_NODE_ALREADY_IN_RING = 2;
+    SAFE_TO_JOIN = 3;
+    VIEW_CHANGE_IN_PROGRESS = 4;
+};
+
+// ******* Alert messages *******
+
+message BatchedAlertMessage
+{
+    Endpoint sender = 1;
+    repeated AlertMessage messages = 3;
+}
+
+message AlertMessage
+{
+    Endpoint edgeSrc = 1;
+    Endpoint edgeDst = 2;
+    EdgeStatus edgeStatus = 3;
+    int64 configurationId = 4;
+    repeated int32 ringNumber = 5;
+    NodeId nodeId = 6;                      // Required only for join protocol
+    Metadata metadata = 7;                // Required only for join protocol
+}
+
+enum EdgeStatus {
+    UP = 0;
+    DOWN = 1;
+};
+
+message Response
+{
+}
+
+
+// ******* Fast Paxos Phase 2 message *******
+
+message FastRoundPhase2bMessage
+{
+    Endpoint sender = 1;
+    int64 configurationId = 2;
+    repeated Endpoint endpoints = 3;
+}
+
+
+// ******* Classic Paxos messages *********
+message Rank
+{
+    int32 round = 1;
+    int32 nodeIndex = 2;
+}
+
+message Phase1aMessage
+{
+    Endpoint sender = 1;
+    int64 configurationId = 2;
+    Rank rank = 3;
+}
+
+message Phase1bMessage
+{
+    Endpoint sender = 1;
+    int64 configurationId = 2;
+    Rank rnd = 3;
+    Rank vrnd = 4;
+    repeated Endpoint vval = 5;
+}
+
+message Phase2aMessage
+{
+    Endpoint sender = 1;
+    int64 configurationId = 2;
+    Rank rnd = 3;
+    repeated Endpoint vval = 5;
+}
+
+message Phase2bMessage
+{
+    Endpoint sender = 1;
+    int64 configurationId = 2;
+    Rank rnd = 3;
+    repeated Endpoint endpoints = 4;
+}
+
+
+message ConsensusResponse
+{
+}
+
+
+// ******* Node Metadata *********
+message Metadata
+{
+    map<string, bytes> metadata = 1;
+}
+
+// ******* Leave protocol *******
+
+message LeaveMessage
+{
+    Endpoint sender = 1;
+}
+
+// ******* Used by simple probing failure detector *******
+
+message ProbeMessage
+{
+    Endpoint sender = 1;
+    repeated bytes payload = 3;
+}
+
+message ProbeResponse
+{
+    NodeStatus status = 1;
+}
+
+enum NodeStatus {
+    OK = 0;             // this is the default value
+    BOOTSTRAPPING = 1;
+};
