@@ -307,7 +307,6 @@ final class MembershipViewTests: XCTestCase {
         XCTAssertEqual(configurationIds1.last, configurationIds2.last)
     }
 
-
     static var allTests = [
         ("testOneRingAddition", testOneRingAddition),
         ("testMultipleRingAdditions", testMultipleRingAdditions),
@@ -323,5 +322,6 @@ final class MembershipViewTests: XCTestCase {
         ("testUniqueIdConstraints", testUniqueIdConstraints),
         ("testUniqueIdConstraintsWithDeletions", testUniqueIdConstraintsWithDeletions),
         ("testNodeConfigurationChange", testNodeConfigurationChange),
+        ("testNodeConfigurationChangeAcrossViews", testNodeConfigurationChangeAcrossViews),
     ]
 }

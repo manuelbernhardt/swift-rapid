@@ -24,6 +24,7 @@ final class MembershipView {
 
     private var shouldUpdateConfigurationId = true
 
+    /// Initializes an empty membership view
     init(K: Int) {
         assert(K > 0)
         self.K = K
@@ -36,6 +37,7 @@ final class MembershipView {
         }
     }
 
+    /// Initializes a membership view based on a given set of nodes and identifiers
     convenience init(K: Int, nodeIds: [NodeId], endpoints: [Endpoint]) {
         self.init(K: K)
         self.allNodes = Set(endpoints)
@@ -46,6 +48,7 @@ final class MembershipView {
         }
     }
 
+    /// Query if a new node can join the membership group or if there is a problem
     func isSafeToJoin(node: Endpoint, uuid: NodeId) -> JoinStatusCode {
         switch (allNodes.contains(node), seenIdentifiers.contains(uuid)) {
             case (true, true):
@@ -59,14 +62,17 @@ final class MembershipView {
         }
     }
 
+    /// Query if the host is already part of the membership group
     func isHostPresent(_ node: Endpoint) -> Bool {
         return allNodes.contains(node)
     }
 
+    /// Query if the unique identifier is known to this membership view
     func isIdentifierPresent(_ uuid: NodeId) -> Bool {
         return seenIdentifiers.contains(uuid)
     }
 
+    /// Retrieves all the monitoring nodes (observers) of a given subject node
     func getObserversOf(_ node: Endpoint) throws -> [Endpoint] {
         if (!allNodes.contains(node)) {
             throw MembershipViewError.NodeNotInRingError(node)
@@ -79,6 +85,8 @@ final class MembershipView {
         return observers
     }
 
+    /// Retrieves all the monitoring nodes (observers) of a given subject node
+    /// prior to it being added to the membership group
     func getExpectedObserversOf(node: Endpoint) -> [Endpoint] {
         if (rings[0].isEmpty) {
             return []
@@ -86,6 +94,7 @@ final class MembershipView {
         return getPredecessorsOf(node)
     }
 
+    /// Retrieves all the monitored nodes (subjects) of a given observer node
     func getSubjectsOf(node: Endpoint) throws -> [Endpoint] {
         if (!allNodes.contains(node)) {
             throw MembershipViewError.NodeNotInRingError(node)
@@ -97,6 +106,7 @@ final class MembershipView {
         return getPredecessorsOf(node)
     }
 
+    /// Query the identifier of the current configuration
     func getCurrentConfigurationId() -> UInt64 {
         if (shouldUpdateConfigurationId) {
             updateCurrentConfiguration()
@@ -105,6 +115,7 @@ final class MembershipView {
         return currentConfiguration.configurationId
     }
 
+    /// Retrieves the current Configuration
     func getCurrentConfiguration() -> Configuration {
         if (shouldUpdateConfigurationId) {
             updateCurrentConfiguration()
@@ -113,14 +124,30 @@ final class MembershipView {
         return currentConfiguration
     }
 
+    /// Retrieves the nodes in the order of the k'th ring
     func getRing(k: Int) -> SortableSet<Endpoint> {
         return rings[k]
     }
 
-    func getRingNumbers(observer: Endpoint, subject: Endpoint) -> [Int] {
-        return []
+    /// Retrieves the ring numbers of an observer for the given subject such that
+    /// subject is a successor of observer on ring[k]
+    func getRingNumbers(observer: Endpoint, subject: Endpoint) throws -> [Int] {
+        let subjects = try getSubjectsOf(node: observer)
+        if (subjects.isEmpty) {
+            return []
+        }
+        var ringIndexes = [Int]()
+        var ringNumber = 0
+        for node in subjects {
+            if (node == subject) {
+                ringIndexes.append(ringNumber)
+            }
+            ringNumber += 1
+        }
+        return ringIndexes
     }
 
+    /// Queries the amount of members of the membership group
     func getMembershipSize() -> Int {
         return allNodes.count
     }
@@ -144,6 +171,7 @@ final class MembershipView {
         }
     }
 
+    /// Adds a node to the view
     func ringAdd(node: Endpoint, nodeId: NodeId) throws {
         if (isIdentifierPresent(nodeId)) {
             throw MembershipViewError.UUIDAlreadySeenError(node, nodeId)
@@ -172,6 +200,7 @@ final class MembershipView {
         shouldUpdateConfigurationId = true
     }
 
+    /// Removes a node from the view
     func ringDelete(node: Endpoint) throws {
         if (!rings[0].contains(node)) {
             throw MembershipViewError.NodeNotInRingError(node)
@@ -233,7 +262,8 @@ enum MembershipViewError: Error, Equatable {
 
 extension Endpoint: RingHashable {
     public func ringHash(seed: Int) -> UInt64 {
-        // TODO find another implementation of the XX hash that accepts data directly as bytes
-        return XXH64.digest(self.hostname.base64EncodedString() + "\(self.port)", seed: UInt64(seed))
+        let seed = UInt64(seed)
+        return XXH64.digest(self.hostname, seed: seed)
+                &+ XXH64.digest(byteArray(from: self.port), seed: seed)
     }
 }
