@@ -1,6 +1,5 @@
 import Foundation
 
-
 public func addressFromParts(_ hostname: String, _ port: Int) -> Endpoint {
     return Endpoint.with {
         $0.hostname = Data(hostname.utf8)
@@ -36,4 +35,10 @@ public func nodeIdFromUUID(_ uuid: UUID) -> NodeId {
         $0.high = msb
         $0.low = lsb
     }
+}
+
+func byteArray<T>(from value: T) -> Data where T: FixedWidthInteger {
+    return withUnsafePointer(to: value, { ptr in
+        Data(bytes: ptr, count: MemoryLayout<T>.size)
+    })
 }

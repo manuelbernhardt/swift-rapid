@@ -202,6 +202,112 @@ final class MembershipViewTests: XCTestCase {
         XCTAssertEqual(K, numObservers)
     }
 
+    func testUniqueIdConstraints() throws {
+        let view = MembershipView(K : K)
+        let node1 = addressFromParts("127.0.0.1", 1234)
+        let uid1 = UUID()
+        let nodeId1 = nodeIdFromUUID(uid1)
+        try view.ringAdd(node: node1, nodeId: nodeId1)
+
+        let node2 = addressFromParts("127.0.0.1", 1234)
+        let nodeId2: NodeId = nodeIdFromUUID(uid1)
+
+        // same host, same UID
+        XCTAssertThrowsError(try view.ringAdd(node: node2, nodeId: nodeId2)) { error in
+            XCTAssertEqual(error as! MembershipViewError, MembershipViewError.UUIDAlreadySeenError(node2, nodeId2))
+        }
+
+        // same host, different UID
+        XCTAssertThrowsError(try view.ringAdd(node: node2, nodeId: nodeIdFromUUID(UUID()))) { error in
+            XCTAssertEqual(error as! MembershipViewError, MembershipViewError.NodeAlreadyInRingError(node2))
+        }
+
+        // different host, same UID
+        let node3 = addressFromParts("127.0.0.1", 1235)
+        XCTAssertThrowsError(try view.ringAdd(node: node3, nodeId: nodeId2)) { error in
+            XCTAssertEqual(error as! MembershipViewError, MembershipViewError.UUIDAlreadySeenError(node3, nodeId2))
+        }
+
+        try view.ringAdd(node: node3, nodeId: nodeIdFromUUID(UUID()))
+
+        XCTAssertEqual(2, view.getMembershipSize())
+    }
+
+    func testUniqueIdConstraintsWithDeletions() throws {
+        let view = MembershipView(K : K)
+
+        let node1 = addressFromParts("127.0.0.1", 1234)
+        let nodeId1 = nodeIdFromUUID(UUID())
+        try view.ringAdd(node: node1, nodeId: nodeId1)
+
+        let node2 = addressFromParts("127.0.0.1", 1235)
+        let nodeId2: NodeId = nodeIdFromUUID(UUID())
+        try view.ringAdd(node: node2, nodeId: nodeId2)
+
+        try view.ringDelete(node: node2)
+        XCTAssertEqual(1, view.getMembershipSize())
+
+        XCTAssertThrowsError(try view.ringAdd(node: node2, nodeId: nodeId2)) { error in
+            XCTAssertEqual(error as! MembershipViewError, MembershipViewError.UUIDAlreadySeenError(node2, nodeId2))
+        }
+
+        XCTAssertEqual(1, view.getMembershipSize())
+
+        try view.ringAdd(node: node2, nodeId: nodeIdFromUUID(UUID()))
+        XCTAssertEqual(2, view.getMembershipSize())
+    }
+
+    func testNodeConfigurationChange() throws {
+        let view = MembershipView(K : K)
+        let numNodes = 100 // TODO 1000 when perf allows
+        var configurationIds = Set<UInt64>()
+        for i in 0..<numNodes {
+            let node = addressFromParts("127.0.0.1", i)
+            try view.ringAdd(node: node, nodeId: nodeIdFromUUID(UUID()))
+            configurationIds.insert(view.getCurrentConfigurationId())
+        }
+        XCTAssertEqual(numNodes, configurationIds.count)
+    }
+
+    func testNodeConfigurationChangeAcrossViews() throws {
+        let view1 = MembershipView(K : K)
+        let view2 = MembershipView(K : K)
+        let numNodes = 100 // TODO 1000 when perf allows
+
+        var nodeIds = [Endpoint : UUID]()
+
+        var configurationIds1 = [UInt64]()
+        var configurationIds2 = [UInt64]()
+
+        for i in 0..<numNodes {
+            let node = addressFromParts("127.0.0.1", i)
+            let uuid = UUID()
+            nodeIds[node] = uuid
+
+            try view1.ringAdd(node: node, nodeId: nodeIdFromUUID(uuid))
+            configurationIds1.append(view1.getCurrentConfigurationId())
+        }
+
+        for i in (0..<numNodes).reversed() {
+            let node = addressFromParts("127.0.0.1", i)
+            let uuid = nodeIds[node]!
+
+            try view2.ringAdd(node: node, nodeId: nodeIdFromUUID(uuid))
+            configurationIds2.append(view2.getCurrentConfigurationId())
+        }
+
+        XCTAssertEqual(numNodes, configurationIds1.count)
+        XCTAssertEqual(numNodes, configurationIds2.count)
+
+        // given the nodes are added in opposite order, only the last configuration IDs should be identical
+        // across both views
+        for i in 0 ..< numNodes - 1 {
+            XCTAssertNotEqual(configurationIds1[i], configurationIds2[i])
+        }
+        XCTAssertEqual(configurationIds1.last, configurationIds2.last)
+    }
+
+
     static var allTests = [
         ("testOneRingAddition", testOneRingAddition),
         ("testMultipleRingAdditions", testMultipleRingAdditions),
@@ -214,5 +320,8 @@ final class MembershipViewTests: XCTestCase {
         ("testMonitoringRelationshipThreeNodesWithDelete", testMonitoringRelationshipThreeNodesWithDelete),
         ("testMonitoringRelationshipMultipleNodes", testMonitoringRelationshipMultipleNodes),
         ("testMonitoringRelationshipDuringBootstrap", testMonitoringRelationshipDuringBootstrap),
+        ("testUniqueIdConstraints", testUniqueIdConstraints),
+        ("testUniqueIdConstraintsWithDeletions", testUniqueIdConstraintsWithDeletions),
+        ("testNodeConfigurationChange", testNodeConfigurationChange),
     ]
 }

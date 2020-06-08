@@ -14,12 +14,9 @@ import xxHash_Swift
 ///
 final class MembershipView {
 
-    private static let HashFunction = XXH64(0)
-
     private let K: Int
     private var rings = [SortableSet<Endpoint>]()
     private var seenIdentifiers: Set<NodeId>
-    private var currentConfigurationId: Int64 = -1
     private var currentConfiguration: Configuration
 
     private var allNodes: Set<Endpoint>
@@ -32,7 +29,7 @@ final class MembershipView {
         self.K = K
         self.allNodes = Set()
         self.seenIdentifiers = Set()
-        self.currentConfiguration = Configuration(nodeIds: seenIdentifiers, endpoints: allNodes)
+        self.currentConfiguration = Configuration(nodeIds: seenIdentifiers, endpoints: [])
         let range = 0..<K
         for k in range {
             rings.append(SortableSet<Endpoint>(seed: k))
@@ -100,8 +97,20 @@ final class MembershipView {
         return getPredecessorsOf(node)
     }
 
-    func getCurrentConfigurationId() -> Int64 {
-        return -1
+    func getCurrentConfigurationId() -> UInt64 {
+        if (shouldUpdateConfigurationId) {
+            updateCurrentConfiguration()
+            shouldUpdateConfigurationId = false
+        }
+        return currentConfiguration.configurationId
+    }
+
+    func getCurrentConfiguration() -> Configuration {
+        if (shouldUpdateConfigurationId) {
+            updateCurrentConfiguration()
+            shouldUpdateConfigurationId = false
+        }
+        return currentConfiguration
     }
 
     func getRing(k: Int) -> SortableSet<Endpoint> {
@@ -135,7 +144,6 @@ final class MembershipView {
         }
     }
 
-
     func ringAdd(node: Endpoint, nodeId: NodeId) throws {
         if (isIdentifierPresent(nodeId)) {
             throw MembershipViewError.UUIDAlreadySeenError(node, nodeId)
@@ -149,6 +157,7 @@ final class MembershipView {
 
             // TODO this is, of course, a performance nightmare
             // TODO offer variant to add / remove many nodes at once (collecting errors) and sort after the fact
+            // TODO or implement / find an implementation of an always-sorted set with custom sort
             rings[k].sort()
 
             if let subject = rings[k].lower(node) {
@@ -182,22 +191,39 @@ final class MembershipView {
         }
 
         shouldUpdateConfigurationId = true
+    }
 
-
-
+    private func updateCurrentConfiguration() {
+        currentConfiguration = Configuration(nodeIds: seenIdentifiers, endpoints: rings[0].contents)
     }
 
 }
 
 struct Configuration {
     private let nodeIds: Set<NodeId>
-    private let endpoints: Set<Endpoint>
+    private let endpoints: [Endpoint]
+    let configurationId: UInt64
 
-    init(nodeIds: Set<NodeId>, endpoints: Set<Endpoint>) {
+    init(nodeIds: Set<NodeId>, endpoints: [Endpoint]) {
         self.nodeIds = nodeIds
         self.endpoints = endpoints
+
+        // compute stable hash across all nodes
+        var hash: UInt64 = 1
+        for nodeId in nodeIds {
+            hash = hash &+ XXH64.digest(byteArray(from: nodeId.high))
+            hash = hash &+ numericCast(XXH64.digest(byteArray(from: nodeId.low)))
+        }
+        for endpoint in endpoints {
+            hash = hash &+ numericCast(XXH64.digest(endpoint.hostname))
+            hash = hash &+ numericCast(XXH64.digest(byteArray(from: endpoint.port)))
+        }
+        self.configurationId = hash
     }
+
 }
+
+
 
 enum MembershipViewError: Error, Equatable {
     case NodeNotInRingError(Endpoint)
