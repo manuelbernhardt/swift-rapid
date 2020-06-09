@@ -13,13 +13,13 @@ class MultiNodeCutDetector {
     private let K_MIN = 3
 
     // the number of observers per subject / subjects per observer
-    private let K: UInt8
+    private let K: Int
 
     // high watermark
-    private let H: UInt8
+    private let H: Int
 
     // low watermark
-    private let L: UInt8
+    private let L: Int
 
     private var proposalCount = 0
     private var updatesInProgress = 0
@@ -28,7 +28,7 @@ class MultiNodeCutDetector {
     private var preProposal = Set<Endpoint>()
     private var seenLinkDownEvents = false
 
-    init(K: UInt8, H: UInt8, L: UInt8) throws {
+    init(K: Int, H: Int, L: Int) throws {
         self.K = K
         self.H = H
         self.L = L
@@ -40,9 +40,9 @@ class MultiNodeCutDetector {
         }
     }
 
-    //// Apply a AlertMessage against the cut detector. When an update moves a host
-    //// past the H threshold of reports, and no other host has between H and L reports, the
-    //// method returns a view change proposal.
+    /// Apply a AlertMessage against the cut detector. When an update moves a host
+    /// past the H threshold of reports, and no other host has between H and L reports, the
+    /// method returns a view change proposal.
     public func aggregate(msg: AlertMessage) -> [Endpoint] {
         return msg.ringNumber.flatMap { aggregate(src: msg.edgeSrc, dst: msg.edgeDst, edgeStatus: msg.edgeStatus, ringNumber: $0) }
     }
@@ -60,6 +60,8 @@ class MultiNodeCutDetector {
         }
 
         reportsForHost[ringNumber] = src
+
+        reportsPerHost[dst] = reportsForHost
 
         if (reportsForHost.count == L) {
             updatesInProgress += 1
@@ -86,8 +88,8 @@ class MultiNodeCutDetector {
         return []
     }
 
-    //// Invalidates edges between nodes that are failing or have failed. This step may be skipped safely
-    //// when there are no failing nodes.
+    /// Invalidates edges between nodes that are failing or have failed. This step may be skipped safely
+    /// when there are no failing nodes.
     public func invalidateFailingEdges(view: MembershipView) -> [Endpoint] {
         if (!seenLinkDownEvents) {
             return []
@@ -110,6 +112,11 @@ class MultiNodeCutDetector {
         }
 
         return Array(proposalsToReturn)
+    }
+
+    /// For testing
+    public func getProposalCount() -> Int {
+        return proposalCount
     }
 }
 

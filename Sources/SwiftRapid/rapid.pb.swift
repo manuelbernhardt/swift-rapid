@@ -416,7 +416,7 @@ public struct JoinResponse {
 
   public var statusCode: JoinStatusCode = .hostnameAlreadyInRing
 
-  public var configurationID: Int64 = 0
+  public var configurationID: UInt64 = 0
 
   public var endpoints: [Endpoint] = []
 
@@ -481,7 +481,7 @@ public struct AlertMessage {
 
   public var edgeStatus: EdgeStatus = .up
 
-  public var configurationID: Int64 = 0
+  public var configurationID: UInt64 = 0
 
   public var ringNumber: [Int32] = []
 
@@ -539,7 +539,7 @@ public struct FastRoundPhase2bMessage {
   /// Clears the value of `sender`. Subsequent reads from it will return its default value.
   public mutating func clearSender() {self._sender = nil}
 
-  public var configurationID: Int64 = 0
+  public var configurationID: UInt64 = 0
 
   public var endpoints: [Endpoint] = []
 
@@ -579,7 +579,7 @@ public struct Phase1aMessage {
   /// Clears the value of `sender`. Subsequent reads from it will return its default value.
   public mutating func clearSender() {self._sender = nil}
 
-  public var configurationID: Int64 = 0
+  public var configurationID: UInt64 = 0
 
   public var rank: Rank {
     get {return _rank ?? Rank()}
@@ -612,7 +612,7 @@ public struct Phase1bMessage {
   /// Clears the value of `sender`. Subsequent reads from it will return its default value.
   public mutating func clearSender() {self._sender = nil}
 
-  public var configurationID: Int64 = 0
+  public var configurationID: UInt64 = 0
 
   public var rnd: Rank {
     get {return _rnd ?? Rank()}
@@ -657,7 +657,7 @@ public struct Phase2aMessage {
   /// Clears the value of `sender`. Subsequent reads from it will return its default value.
   public mutating func clearSender() {self._sender = nil}
 
-  public var configurationID: Int64 = 0
+  public var configurationID: UInt64 = 0
 
   public var rnd: Rank {
     get {return _rnd ?? Rank()}
@@ -692,7 +692,7 @@ public struct Phase2bMessage {
   /// Clears the value of `sender`. Subsequent reads from it will return its default value.
   public mutating func clearSender() {self._sender = nil}
 
-  public var configurationID: Int64 = 0
+  public var configurationID: UInt64 = 0
 
   public var rnd: Rank {
     get {return _rnd ?? Rank()}
@@ -1143,7 +1143,7 @@ extension JoinResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementat
       switch fieldNumber {
       case 1: try decoder.decodeSingularMessageField(value: &self._sender)
       case 2: try decoder.decodeSingularEnumField(value: &self.statusCode)
-      case 3: try decoder.decodeSingularInt64Field(value: &self.configurationID)
+      case 3: try decoder.decodeSingularUInt64Field(value: &self.configurationID)
       case 4: try decoder.decodeRepeatedMessageField(value: &self.endpoints)
       case 5: try decoder.decodeRepeatedMessageField(value: &self.identifiers)
       case 6: try decoder.decodeRepeatedMessageField(value: &self.metadataKeys)
@@ -1161,7 +1161,7 @@ extension JoinResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementat
       try visitor.visitSingularEnumField(value: self.statusCode, fieldNumber: 2)
     }
     if self.configurationID != 0 {
-      try visitor.visitSingularInt64Field(value: self.configurationID, fieldNumber: 3)
+      try visitor.visitSingularUInt64Field(value: self.configurationID, fieldNumber: 3)
     }
     if !self.endpoints.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.endpoints, fieldNumber: 4)
@@ -1244,7 +1244,7 @@ extension AlertMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementat
       case 1: try decoder.decodeSingularMessageField(value: &self._edgeSrc)
       case 2: try decoder.decodeSingularMessageField(value: &self._edgeDst)
       case 3: try decoder.decodeSingularEnumField(value: &self.edgeStatus)
-      case 4: try decoder.decodeSingularInt64Field(value: &self.configurationID)
+      case 4: try decoder.decodeSingularUInt64Field(value: &self.configurationID)
       case 5: try decoder.decodeRepeatedInt32Field(value: &self.ringNumber)
       case 6: try decoder.decodeSingularMessageField(value: &self._nodeID)
       case 7: try decoder.decodeSingularMessageField(value: &self._metadata)
@@ -1264,7 +1264,7 @@ extension AlertMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementat
       try visitor.visitSingularEnumField(value: self.edgeStatus, fieldNumber: 3)
     }
     if self.configurationID != 0 {
-      try visitor.visitSingularInt64Field(value: self.configurationID, fieldNumber: 4)
+      try visitor.visitSingularUInt64Field(value: self.configurationID, fieldNumber: 4)
     }
     if !self.ringNumber.isEmpty {
       try visitor.visitPackedInt32Field(value: self.ringNumber, fieldNumber: 5)
@@ -1322,7 +1322,7 @@ extension FastRoundPhase2bMessage: SwiftProtobuf.Message, SwiftProtobuf._Message
     while let fieldNumber = try decoder.nextFieldNumber() {
       switch fieldNumber {
       case 1: try decoder.decodeSingularMessageField(value: &self._sender)
-      case 2: try decoder.decodeSingularInt64Field(value: &self.configurationID)
+      case 2: try decoder.decodeSingularUInt64Field(value: &self.configurationID)
       case 3: try decoder.decodeRepeatedMessageField(value: &self.endpoints)
       default: break
       }
@@ -1334,7 +1334,7 @@ extension FastRoundPhase2bMessage: SwiftProtobuf.Message, SwiftProtobuf._Message
       try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
     }
     if self.configurationID != 0 {
-      try visitor.visitSingularInt64Field(value: self.configurationID, fieldNumber: 2)
+      try visitor.visitSingularUInt64Field(value: self.configurationID, fieldNumber: 2)
     }
     if !self.endpoints.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.endpoints, fieldNumber: 3)
@@ -1398,7 +1398,7 @@ extension Phase1aMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplement
     while let fieldNumber = try decoder.nextFieldNumber() {
       switch fieldNumber {
       case 1: try decoder.decodeSingularMessageField(value: &self._sender)
-      case 2: try decoder.decodeSingularInt64Field(value: &self.configurationID)
+      case 2: try decoder.decodeSingularUInt64Field(value: &self.configurationID)
       case 3: try decoder.decodeSingularMessageField(value: &self._rank)
       default: break
       }
@@ -1410,7 +1410,7 @@ extension Phase1aMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplement
       try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
     }
     if self.configurationID != 0 {
-      try visitor.visitSingularInt64Field(value: self.configurationID, fieldNumber: 2)
+      try visitor.visitSingularUInt64Field(value: self.configurationID, fieldNumber: 2)
     }
     if let v = self._rank {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
@@ -1441,7 +1441,7 @@ extension Phase1bMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplement
     while let fieldNumber = try decoder.nextFieldNumber() {
       switch fieldNumber {
       case 1: try decoder.decodeSingularMessageField(value: &self._sender)
-      case 2: try decoder.decodeSingularInt64Field(value: &self.configurationID)
+      case 2: try decoder.decodeSingularUInt64Field(value: &self.configurationID)
       case 3: try decoder.decodeSingularMessageField(value: &self._rnd)
       case 4: try decoder.decodeSingularMessageField(value: &self._vrnd)
       case 5: try decoder.decodeRepeatedMessageField(value: &self.vval)
@@ -1455,7 +1455,7 @@ extension Phase1bMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplement
       try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
     }
     if self.configurationID != 0 {
-      try visitor.visitSingularInt64Field(value: self.configurationID, fieldNumber: 2)
+      try visitor.visitSingularUInt64Field(value: self.configurationID, fieldNumber: 2)
     }
     if let v = self._rnd {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
@@ -1493,7 +1493,7 @@ extension Phase2aMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplement
     while let fieldNumber = try decoder.nextFieldNumber() {
       switch fieldNumber {
       case 1: try decoder.decodeSingularMessageField(value: &self._sender)
-      case 2: try decoder.decodeSingularInt64Field(value: &self.configurationID)
+      case 2: try decoder.decodeSingularUInt64Field(value: &self.configurationID)
       case 3: try decoder.decodeSingularMessageField(value: &self._rnd)
       case 5: try decoder.decodeRepeatedMessageField(value: &self.vval)
       default: break
@@ -1506,7 +1506,7 @@ extension Phase2aMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplement
       try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
     }
     if self.configurationID != 0 {
-      try visitor.visitSingularInt64Field(value: self.configurationID, fieldNumber: 2)
+      try visitor.visitSingularUInt64Field(value: self.configurationID, fieldNumber: 2)
     }
     if let v = self._rnd {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
@@ -1540,7 +1540,7 @@ extension Phase2bMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplement
     while let fieldNumber = try decoder.nextFieldNumber() {
       switch fieldNumber {
       case 1: try decoder.decodeSingularMessageField(value: &self._sender)
-      case 2: try decoder.decodeSingularInt64Field(value: &self.configurationID)
+      case 2: try decoder.decodeSingularUInt64Field(value: &self.configurationID)
       case 3: try decoder.decodeSingularMessageField(value: &self._rnd)
       case 4: try decoder.decodeRepeatedMessageField(value: &self.endpoints)
       default: break
@@ -1553,7 +1553,7 @@ extension Phase2bMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplement
       try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
     }
     if self.configurationID != 0 {
-      try visitor.visitSingularInt64Field(value: self.configurationID, fieldNumber: 2)
+      try visitor.visitSingularUInt64Field(value: self.configurationID, fieldNumber: 2)
     }
     if let v = self._rnd {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
