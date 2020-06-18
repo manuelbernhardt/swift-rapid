@@ -120,6 +120,3 @@ class MultiNodeCutDetector {
     }
 }
 
-enum ValidityError: Error {
-    case InvalidArgumentError(String)
-}

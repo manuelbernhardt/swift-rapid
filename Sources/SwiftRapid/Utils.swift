@@ -42,3 +42,24 @@ func byteArray<T>(from value: T) -> Data where T: FixedWidthInteger {
         Data(bytes: ptr, count: MemoryLayout<T>.size)
     })
 }
+
+func currentTimeNanos() -> UInt64 {
+    var info = mach_timebase_info()
+    guard mach_timebase_info(&info) == KERN_SUCCESS else {
+        // fall back to something else
+        return UInt64(NSDate().timeIntervalSince1970) * UInt64(10^9)
+    }
+    let currentTime = mach_absolute_time()
+    return currentTime * UInt64(info.numer) / UInt64(info.denom)
+}
+
+func require(_ condition: Bool, _ msg: String) throws {
+    if (!condition) {
+        throw ValidityError.InvalidArgumentError(msg)
+    }
+}
+
+// TODO is there no such thing in the standard lib?
+enum ValidityError: Error {
+    case InvalidArgumentError(String)
+}
