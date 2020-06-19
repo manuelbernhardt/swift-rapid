@@ -36,6 +36,19 @@ class AdaptiveAccrualFailureDetector {
 
     private let state = AtomicReference<State>(initialValue: State(intervals: [], freshnessPoint: nil))
 
+    /// Create a new adaptive accrual failure detector instance
+    ///
+    /// - Parameters:
+    ///   - threshold: A low threshold is prone to generate many wrong suspicions but ensures a quick detection in the event
+    //                 of a real crash. Conversely, a high threshold generates fewer mistakes but needs more time to detect
+    //                 actual crashes
+    ///   - maxSampleSize: Number of samples to use for calculation of mean and standard deviation of
+    //                     inter-arrival times.
+    ///   - scalingFactor: A scaling factor to prevent the failure detector to overestimate the probability of failures
+    //                     particularly in the case of increasing network latency times
+    ///   - clock: The clock, returning current time in milliseconds, but can be faked for testing
+    //             purposes. It is only used for measuring intervals (duration).
+    /// - Throws: A ValidityError if the parameters aren't acceptable
     init(threshold: Double, maxSampleSize: Int, scalingFactor: Double, clock: @escaping () -> UInt64) throws {
         self.threshold = threshold
         self.maxSampleSize = maxSampleSize
@@ -47,7 +60,11 @@ class AdaptiveAccrualFailureDetector {
         try require(scalingFactor > 0.0, "Scaling factor must be strictly positive")
     }
 
-    func isAvailable(timestamp: UInt64) -> Bool {
+    func isAvailable() -> Bool {
+        return isAvailable(timestamp: clock())
+    }
+
+    private func isAvailable(timestamp: UInt64) -> Bool {
         return suspicion(timestamp: timestamp) < threshold
     }
 
@@ -58,6 +75,9 @@ class AdaptiveAccrualFailureDetector {
 
         if let freshnessPoint = oldState.freshnessPoint {
             let tΔ = timestamp - freshnessPoint
+            if (oldState.intervals.count >= maxSampleSize) {
+                newIntervals.removeFirst()
+            }
             newIntervals.append(tΔ)
         } else {
             // this is heartbeat from a new resource
@@ -67,25 +87,27 @@ class AdaptiveAccrualFailureDetector {
         let newState = State(intervals: newIntervals, freshnessPoint: timestamp)
 
         // if we won the race then update else try again
-        if (!state.compareAndSet(expect: oldState, newValue: newState)) {
+        let wasUpdated = state.compareAndSet(expect: oldState, newValue: newState)
+        if (!wasUpdated) {
+            print("race")
             return heartbeat()
         }
     }
 
     private func suspicion(timestamp: UInt64) -> Double {
-        let oldState: State = state.value
+        let currentState: State = state.value
 
-        guard let freshnessPoint = oldState.freshnessPoint else {
+        guard let freshnessPoint = currentState.freshnessPoint else {
             // treat unmanaged connections, e.g. without initial state, as healthy connections
             return 0.0
         }
 
-        if (oldState.intervals.isEmpty) {
+        if (currentState.intervals.isEmpty) {
             // treat unmanaged connections, e.g. with zero heartbeats, as healthy connections
             return 0.0
         } else {
             let tΔ = timestamp - freshnessPoint
-            let S = oldState.intervals
+            let S = currentState.intervals
             let SLength = S.count
             let StΔLength = S.filter { interval in Double(interval) <= Double(tΔ) * scalingFactor }.count
 
@@ -94,8 +116,8 @@ class AdaptiveAccrualFailureDetector {
     }
 
     struct State {
-        var intervals: [UInt64]
-        var freshnessPoint: Optional<UInt64>
+        let intervals: [UInt64]
+        let freshnessPoint: Optional<UInt64>
     }
 
 }
