@@ -1,7 +1,12 @@
 import Foundation
 import NIO
 
-///
+class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
+    func createInstance(subject endpoint: Endpoint) -> () -> EventLoopFuture<FailureDetectionResult> {
+        fatalError("createInstance(subject:) has not been implemented")
+    }
+}
+
 ///  Implementation of 'A New Adaptive Accrual Failure Detector for Dependable Distributed Systems' by Satzger al. as defined in their paper:
 ///  [https://pdfs.semanticscholar.org/8805/d522cd6cef723aae55595f918e09914e4316.pdf]
 ///
@@ -21,12 +26,6 @@ import NIO
 ///  - tΔ = previous heartbeat timestamp - current heartbeat timestamp
 ///
 /// This class is not thread-safe
-class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
-    func createInstance(subject endpoint: Endpoint) -> () -> EventLoopFuture<FailureDetectionResult> {
-        fatalError("createInstance(subject:) has not been implemented")
-    }
-}
-
 class AdaptiveAccrualFailureDetector {
 
     private let threshold: Double

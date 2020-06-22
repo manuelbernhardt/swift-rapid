@@ -2,6 +2,7 @@ import Foundation
 import NIO
 
 /// A provider for edge failure detectors that monitor one edge of the expander graph.
+///
 /// Implementations are expected to be invoked periodically.
 ///
 /// On every configuration change, the membership service invokes createInstance for each edge to be monitored by this node
