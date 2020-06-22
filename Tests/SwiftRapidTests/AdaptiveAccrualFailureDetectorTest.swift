@@ -1,36 +1,8 @@
 import XCTest
-import Concurrency
+import libkern
 @testable import SwiftRapid
 
 class AdaptiveAccrualFailureDetectorTest: XCTestCase {
-
-    func testAtomicRefCAS() throws {
-        struct Foo {
-            let a: [Int]
-        }
-
-        let foo1 = Foo(a: [1])
-        let foo2 = Foo(a: [2])
-
-        let ref = AtomicReference<Foo>(initialValue: foo1)
-
-        let old = ref.value
-        let update = ref.compareAndSet(expect: old, newValue: foo2)
-        XCTAssertTrue(update)
-
-        var array = [Int]()
-
-        // when we use the contents of the array in old, this test fails
-        // when we don't, it works
-        // so somehow, reading the contents of the array inside of the struct mutates the pointer of the struct??
-        array.append(contentsOf: old.a)
-
-        let immutableArray = array
-
-        let old2 = ref.value
-        let update2 = ref.compareAndSet(expect: old2, newValue: Foo(a: immutableArray))
-        XCTAssertTrue(update2)
-    }
 
     func testAvailableBeforeFirstHeartbeat() throws {
         let fd = createFailureDetector(clock: generateTime(intervals: [0, 100, 100, 100]))
@@ -45,7 +17,7 @@ class AdaptiveAccrualFailureDetectorTest: XCTestCase {
         XCTAssertTrue(fd.isAvailable())
     }
 
-    func testFailedAfterIfMissedHeartbeats() throws {
+    func testFailedAfterMissedHeartbeats() throws {
         let fd = createFailureDetector(clock: generateTime(intervals: [0, 100, 100, 100, 1000, 10000]))
         fd.heartbeat() // 100
         fd.heartbeat() // 200
@@ -53,6 +25,63 @@ class AdaptiveAccrualFailureDetectorTest: XCTestCase {
 
         XCTAssertTrue(fd.isAvailable()) // 1300
         XCTAssertFalse(fd.isAvailable()) // 11300
+    }
+
+    func testAvailableAfterFailures() throws {
+        let regularIntervals: [UInt64] = Array(repeating: 1000, count: 1000)
+        let intervalsWithPauses = [5 * 60 * 1000, 100, 900, 100, 7000, 100, 900, 100, 900]
+        let intervals = regularIntervals + intervalsWithPauses.map { UInt64($0) }
+        let fd = createFailureDetector(clock: generateTime(intervals: intervals))
+        for _ in 0..<1000 {
+            fd.heartbeat()
+        }
+        XCTAssertFalse(fd.isAvailable()) // after the 5 minutes pause
+        fd.heartbeat()
+        XCTAssertTrue(fd.isAvailable()) // after the recovery
+        fd.heartbeat()
+        XCTAssertFalse(fd.isAvailable()) // after 7 seconds pause
+        fd.heartbeat()
+        XCTAssertTrue(fd.isAvailable()) // after the recovery
+    }
+
+    func testAvailableWhenLatencyFluctuates() throws {
+        let regularIntervals: [UInt64] = Array(repeating: 1000, count: 1000)
+        let slowerIntervals: [UInt64] = [1100, 1100, 1150, 1200, 1200, 1000, 1100]
+        let fd = createFailureDetector(scalingFactor: 0.8, clock: generateTime(intervals: regularIntervals + slowerIntervals))
+        for _ in 0..<1000 {
+            fd.heartbeat()
+        }
+        XCTAssertTrue(fd.isAvailable())
+        fd.heartbeat()
+        XCTAssertTrue(fd.isAvailable())
+        fd.heartbeat()
+        XCTAssertTrue(fd.isAvailable())
+        fd.heartbeat()
+        XCTAssertTrue(fd.isAvailable())
+    }
+
+    func testUseOfMaxSampleSize() throws {
+        let intervals: [UInt64] = [0, 100, 100, 100, 1000, 900, 900, 900, 900, 900]
+        let fd = createFailureDetector(maxSampleSize: 3, clock: generateTime(intervals: intervals))
+
+        // 100 ms
+        fd.heartbeat()
+        fd.heartbeat()
+        fd.heartbeat()
+        let suspicion1 = fd.suspicion()
+
+        // 1000 ms
+        fd.heartbeat()
+
+        // 900 ms
+        fd.heartbeat()
+        fd.heartbeat()
+        fd.heartbeat()
+
+        // by now only 900ms samples should be left
+        let suspicion2 = fd.suspicion()
+
+        XCTAssertEqual(suspicion1, suspicion2)
     }
 
     private func generateTime(intervals: [UInt64]) -> () -> UInt64 {
@@ -64,10 +93,7 @@ class AdaptiveAccrualFailureDetectorTest: XCTestCase {
         let tail = intervals.dropFirst()
         var times = tail.reduce([head], { (acc, i) in acc + [acc.last! + i] })
 
-        print(times)
-
         return {
-            print("Tick")
             let time = times.first!
             times.removeFirst()
             return time

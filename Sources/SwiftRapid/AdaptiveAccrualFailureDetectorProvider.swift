@@ -1,6 +1,5 @@
 import Foundation
 import NIO
-import Concurrency
 
 ///
 ///  Implementation of 'A New Adaptive Accrual Failure Detector for Dependable Distributed Systems' by Satzger al. as defined in their paper:
@@ -20,6 +19,8 @@ import Concurrency
 ///  - S is the list of historical inter-arrival times of heartbeats
 ///  - StΔ the list of inter-arrival times that are smaller or equal to tΔ
 ///  - tΔ = previous heartbeat timestamp - current heartbeat timestamp
+///
+/// This class is not thread-safe
 class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
     func createInstance(subject endpoint: Endpoint) -> () -> EventLoopFuture<FailureDetectionResult> {
         fatalError("createInstance(subject:) has not been implemented")
@@ -34,7 +35,7 @@ class AdaptiveAccrualFailureDetector {
 
     private let clock: () -> UInt64
 
-    private let state = AtomicReference<State>(initialValue: State(intervals: [], freshnessPoint: nil))
+    private var state = State(intervals: [], freshnessPoint: nil)
 
     /// Create a new adaptive accrual failure detector instance
     ///
@@ -64,18 +65,21 @@ class AdaptiveAccrualFailureDetector {
         return isAvailable(timestamp: clock())
     }
 
+    func suspicion() -> Double {
+        return suspicion(timestamp: clock())
+    }
+
     private func isAvailable(timestamp: UInt64) -> Bool {
         return suspicion(timestamp: timestamp) < threshold
     }
 
     func heartbeat() {
         let timestamp = clock()
-        let oldState: State = state.value
-        var newIntervals = [UInt64](oldState.intervals)
+        var newIntervals = [UInt64](state.intervals)
 
-        if let freshnessPoint = oldState.freshnessPoint {
+        if let freshnessPoint = state.freshnessPoint {
             let tΔ = timestamp - freshnessPoint
-            if (oldState.intervals.count >= maxSampleSize) {
+            if (state.intervals.count >= maxSampleSize) {
                 newIntervals.removeFirst()
             }
             newIntervals.append(tΔ)
@@ -85,29 +89,21 @@ class AdaptiveAccrualFailureDetector {
         }
 
         let newState = State(intervals: newIntervals, freshnessPoint: timestamp)
-
-        // if we won the race then update else try again
-        let wasUpdated = state.compareAndSet(expect: oldState, newValue: newState)
-        if (!wasUpdated) {
-            print("race")
-            return heartbeat()
-        }
+        self.state = newState
     }
 
     private func suspicion(timestamp: UInt64) -> Double {
-        let currentState: State = state.value
-
-        guard let freshnessPoint = currentState.freshnessPoint else {
+        guard let freshnessPoint = state.freshnessPoint else {
             // treat unmanaged connections, e.g. without initial state, as healthy connections
             return 0.0
         }
 
-        if (currentState.intervals.isEmpty) {
+        if (state.intervals.isEmpty) {
             // treat unmanaged connections, e.g. with zero heartbeats, as healthy connections
             return 0.0
         } else {
             let tΔ = timestamp - freshnessPoint
-            let S = currentState.intervals
+            let S = state.intervals
             let SLength = S.count
             let StΔLength = S.filter { interval in Double(interval) <= Double(tΔ) * scalingFactor }.count
 
