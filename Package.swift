@@ -7,6 +7,7 @@ let package = Package(
     name: "SwiftRapid",
     dependencies: [
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.6.0"),
+        .package(url: "https://github.com/grpc/grpc-swift", from: "1.0.0-alpha.12"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
         .package(url: "https://github.com/daisuke-t-jp/xxHash-Swift.git", from: "1.0.13")
     ],
@@ -15,7 +16,7 @@ let package = Package(
         // Targets can depend on other targets in this package, and on products in packages which this package depends on.
         .target(
             name: "SwiftRapid",
-            dependencies: ["SwiftProtobuf", "xxHash-Swift", "NIO", "NIOHTTP1"]),
+            dependencies: ["SwiftProtobuf", "xxHash-Swift", "NIO", "GRPC"]),
         .testTarget(
             name: "SwiftRapidTests",
             dependencies: ["SwiftRapid"]),
