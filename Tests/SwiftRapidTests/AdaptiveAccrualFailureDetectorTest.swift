@@ -1,5 +1,4 @@
 import XCTest
-import libkern
 @testable import SwiftRapid
 
 class AdaptiveAccrualFailureDetectorTest: XCTestCase {
@@ -103,5 +102,16 @@ class AdaptiveAccrualFailureDetectorTest: XCTestCase {
     private func createFailureDetector(threshold: Double = 0.2, maxSampleSize: Int = 1000, scalingFactor: Double = 0.9, clock: @escaping () -> UInt64) -> AdaptiveAccrualFailureDetector {
         return try! AdaptiveAccrualFailureDetector(threshold: threshold, maxSampleSize: maxSampleSize, scalingFactor: scalingFactor, clock: clock)
     }
+
+    static var allTests = [
+        ("testAvailableBeforeFirstHeartbeat", testAvailableBeforeFirstHeartbeat),
+        ("testAvailableAfterAFewHeartbeats", testAvailableAfterAFewHeartbeats),
+        ("testFailedAfterMissedHeartbeats", testFailedAfterMissedHeartbeats),
+        ("testAvailableAfterFailures", testAvailableAfterFailures),
+        ("testAvailableWhenLatencyFluctuates", testAvailableWhenLatencyFluctuates),
+        ("testUseOfMaxSampleSize", testUseOfMaxSampleSize)
+
+
+    ]
 
 }

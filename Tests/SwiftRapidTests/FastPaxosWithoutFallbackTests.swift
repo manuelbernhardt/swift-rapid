@@ -169,6 +169,11 @@ class FastPaxosWithoutFallbackTests: XCTestCase {
         }
         return view
     }
+
+    static var allTests = [
+        ("testQuorumNoConflicts", testQuorumNoConflicts),
+        ("testQuorumWithConflicts", testQuorumWithConflicts)
+    ]
 }
 
 class TestBroadcaster: Broadcaster {

@@ -1,7 +1,7 @@
 import XCTest
 
-import swift_rapidTests
+import SwiftRapidTests
 
 var tests = [XCTestCaseEntry]()
-tests += swift_rapidTests.allTests()
+tests += SwiftRapidTests.allTests()
 XCTMain(tests)
