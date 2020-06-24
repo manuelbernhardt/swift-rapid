@@ -18,7 +18,7 @@ class GrpcMessagingServer: MessagingServer, MembershipServiceProvider {
         Server
             .insecure(group: group)
             .withServiceProviders([self])
-            .bind(host: String(decoding: selfAddress.hostname, as: UTF8.self), port: selfAddress.port)
+            .bind(host: String(decoding: selfAddress.hostname, as: UTF8.self), port: Int(selfAddress.port))
             .map {
                 self.server = $0
             }
@@ -26,6 +26,7 @@ class GrpcMessagingServer: MessagingServer, MembershipServiceProvider {
         try server.map {
             try $0.onClose.wait()
         }
+
     }
 
     func shutdown() throws {

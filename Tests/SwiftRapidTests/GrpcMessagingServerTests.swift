@@ -15,16 +15,22 @@ class GrpcMessagingServerTest: XCTestCase {
     }
 
     func testHandleMessageWithoutService() throws {
-        let server = GrpcMessagingServer(group: group)
-        let request = RapidRequest()
-        let testClient = TestGrpcMessagingClient(group)
+        let address = addressFromParts("localhost", 8000)
+        if let g = group {
+            _ = GrpcMessagingServer(address: address, group: g)
+            let request = RapidRequest()
+            let testClient = TestGrpcMessagingClient(group: g, settings: Settings())
 
-        XCTAss
-
-        try! testClient.sendMessage(recipient: addressFromParts(hostname: "localhost", port: 8000), msg: request).wait()
-
-
+            XCTAssertNoThrow({
+                let response: EventLoopFuture<RapidResponse> = try testClient.sendMessage(recipient: address, msg: request)
+                try response.wait()
+            })
+        }
     }
+
+    static var allTests = [
+        ("testHandleMessageWithoutService", testHandleMessageWithoutService)
+    ]
 }
 
 class TestGrpcMessagingClient: GrpcMessagingClient {
