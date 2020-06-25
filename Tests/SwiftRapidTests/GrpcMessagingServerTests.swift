@@ -74,7 +74,8 @@ class GrpcMessagingServerTest: XCTestCase {
     }
 
     static var allTests = [
-        ("testHandleMessageWithoutMembershipService", testHandleMessageWithMembershipService)
+        ("testHandleMessageWithoutMembershipService", testHandleMessageWithoutMembershipService),
+        ("testHandleMessageWithMembershipService", testHandleMessageWithMembershipService)
     ]
 }
 
