@@ -16,7 +16,7 @@ let package = Package(
         // Targets can depend on other targets in this package, and on products in packages which this package depends on.
         .target(
             name: "SwiftRapid",
-            dependencies: ["SwiftProtobuf", "xxHash-Swift", "NIO", "GRPC"]),
+            dependencies: ["SwiftProtobuf", "xxHash-Swift", .product(name: "NIO", package: "swift-nio"), .product(name: "GRPC", package: "grpc-swift") ]),
         .testTarget(
             name: "SwiftRapidTests",
             dependencies: ["SwiftRapid"]),

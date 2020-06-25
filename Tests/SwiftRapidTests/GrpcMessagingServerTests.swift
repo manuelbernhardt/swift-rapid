@@ -14,22 +14,67 @@ class GrpcMessagingServerTest: XCTestCase {
         try! group?.syncShutdownGracefully()
     }
 
-    func testHandleMessageWithoutService() throws {
+    func testHandleMessageWithoutMembershipService() throws {
         let address = addressFromParts("localhost", 8000)
-        if let g = group {
-            _ = GrpcMessagingServer(address: address, group: g)
-            let request = RapidRequest()
-            let testClient = TestGrpcMessagingClient(group: g, settings: Settings())
+        withServer(address, { server in
+            withTestClient { testClient in
+                let request = RapidRequest()
+                let response: EventLoopFuture<RapidResponse> = testClient.sendMessage(recipient: address, msg: request)
+                XCTAssertNoThrow({
+                    try response.wait()
+                })
+            }
+        })
+    }
 
-            XCTAssertNoThrow({
-                let response: EventLoopFuture<RapidResponse> = try testClient.sendMessage(recipient: address, msg: request)
-                try response.wait()
-            })
+    func testHandleMessageWithMembershipService() throws {
+
+        class TestMembershipService: MembershipService {
+            let el: EventLoop
+            var request: RapidRequest? = nil
+            init(el: EventLoop) {
+                self.el = el
+            }
+            func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse> {
+                self.request = request
+                let response = RapidResponse()
+                return el.makeSucceededFuture(response)
+            }
         }
+
+        let address = addressFromParts("localhost", 8000)
+        let testService = TestMembershipService(el: group!.next())
+        withServer(address, { server in
+            withTestClient { testClient in
+                server.onMembershipServiceInitialized(membershipService: testService)
+                let request = RapidRequest()
+                let response: EventLoopFuture<RapidResponse> = testClient.sendMessage(recipient: address, msg: request)
+                XCTAssertNoThrow({
+                    try response.wait()
+                })
+            }
+        })
+    }
+
+    private func withServer<T>(_ address: Endpoint, _ body: (MessagingServer) -> T) -> T {
+        let server = GrpcMessagingServer(address: address, group: group!)
+        try! server.start()
+        defer {
+            try! server.shutdown()
+        }
+        return body(server)
+    }
+
+    private func withTestClient<T>(_ body: (MessagingClient) -> T) -> T {
+        let testClient = TestGrpcMessagingClient(group: group!, settings: Settings())
+        defer {
+            try! testClient.shutdown(el: group!.next())
+        }
+        return body(testClient)
     }
 
     static var allTests = [
-        ("testHandleMessageWithoutService", testHandleMessageWithoutService)
+        ("testHandleMessageWithoutMembershipService", testHandleMessageWithMembershipService)
     ]
 }
 

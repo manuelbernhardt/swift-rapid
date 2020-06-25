@@ -37,6 +37,7 @@ class GrpcMessagingClient: MessagingClient {
 
         let client = clients[recipient] ?? connect()
 
+
         // TODO retry after timeout, use settings
         return client.sendRequest(msg).response
     }
