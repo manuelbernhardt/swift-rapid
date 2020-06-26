@@ -8,7 +8,8 @@ public func allTests() -> [XCTestCaseEntry] {
         testCase(MembershipViewTests.allTests),
         testCase(FastPaxosWithoutFallbackTests.allTests),
         testCase(AdaptiveAccrualFailureDetectorTest.allTests),
-        testCase(GrpcMessagingServerTest.allTests)
+        testCase(GrpcMessagingServerTest.allTests),
+        testCase(GrpcMessagingClientTest.allTests)
     ]
 }
 #endif

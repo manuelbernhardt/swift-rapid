@@ -20,27 +20,12 @@ class GrpcMessagingServerTest: XCTestCase {
             withTestClient { testClient in
                 let request = RapidRequest()
                 let response: EventLoopFuture<RapidResponse> = testClient.sendMessage(recipient: address, msg: request)
-                XCTAssertNoThrow({
-                    try response.wait()
-                })
+                let _ = try! response.wait()
             }
         })
     }
 
     func testHandleMessageWithMembershipService() throws {
-
-        class TestMembershipService: MembershipService {
-            let el: EventLoop
-            var request: RapidRequest? = nil
-            init(el: EventLoop) {
-                self.el = el
-            }
-            func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse> {
-                self.request = request
-                let response = RapidResponse()
-                return el.makeSucceededFuture(response)
-            }
-        }
 
         let address = addressFromParts("localhost", 8000)
         let testService = TestMembershipService(el: group!.next())
@@ -49,9 +34,7 @@ class GrpcMessagingServerTest: XCTestCase {
                 server.onMembershipServiceInitialized(membershipService: testService)
                 let request = RapidRequest()
                 let response: EventLoopFuture<RapidResponse> = testClient.sendMessage(recipient: address, msg: request)
-                XCTAssertNoThrow({
-                    try response.wait()
-                })
+                let _ = try! response.wait()
             }
         })
     }
@@ -81,4 +64,17 @@ class GrpcMessagingServerTest: XCTestCase {
 
 class TestGrpcMessagingClient: GrpcMessagingClient {
 
+}
+
+class TestMembershipService: MembershipService {
+    let el: EventLoop
+    var request: RapidRequest? = nil
+    init(el: EventLoop) {
+        self.el = el
+    }
+    func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse> {
+        self.request = request
+        let response = RapidResponse()
+        return el.makeSucceededFuture(response)
+    }
 }
