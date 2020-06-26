@@ -1,4 +1,5 @@
 import Foundation
+import Dispatch
 
 public func addressFromParts(_ hostname: String, _ port: Int) -> Endpoint {
     return Endpoint.with {
@@ -52,4 +53,8 @@ func require(_ condition: Bool, _ msg: String) throws {
 // TODO is there no such thing in the standard lib?
 enum ValidityError: Error {
     case InvalidArgumentError(String)
+}
+
+func currentTimeNanos() -> UInt64 {
+    return DispatchTime.now().uptimeNanoseconds
 }

@@ -2,9 +2,58 @@ import Foundation
 import NIO
 
 class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
-    func createInstance(subject endpoint: Endpoint) -> () -> EventLoopFuture<FailureDetectionResult> {
-        fatalError("createInstance(subject:) has not been implemented")
+
+    private let messagingClient: MessagingClient
+    private let el: EventLoop
+    private let selfAddress: Endpoint
+
+    private let probeRequest: RapidRequest
+
+    init(selfAddress: Endpoint, messagingClient: MessagingClient, el: EventLoop) {
+        self.selfAddress = selfAddress
+        self.messagingClient = messagingClient
+        self.el = el
+        self.probeRequest = RapidRequest.with {
+            $0.probeMessage = ProbeMessage.with({
+                $0.sender = selfAddress
+            })
+        }
     }
+
+    func createInstance(subject: Endpoint) throws -> () -> EventLoopFuture<FailureDetectionResult> {
+
+        // TODO read from settings
+        let fd = try AdaptiveAccrualFailureDetector(threshold: 0.2, maxSampleSize: 1000, scalingFactor: 0.9, clock: currentTimeNanos)
+
+        func run() -> EventLoopFuture<FailureDetectionResult> {
+            if (!fd.isAvailable()) {
+                return el.makeSucceededFuture(FailureDetectionResult.failure)
+            } else {
+                let probeResponse = messagingClient
+                        .sendMessageBestEffort(recipient: subject, msg: probeRequest)
+                        .hop(to: el) // make sure we always process these from the same event loop
+
+                probeResponse.whenSuccess { response in
+                    switch(response.content) {
+                        case .probeResponse:
+                            // TODO handle probe status / fail after too many probes in initializing state
+                            fd.heartbeat()
+                            return
+                        default:
+                            return
+                    }
+                }
+
+                return probeResponse.map { _ in
+                    FailureDetectionResult.success
+                }
+            }
+        }
+
+        return run
+    }
+
+
 }
 
 ///  Implementation of 'A New Adaptive Accrual Failure Detector for Dependable Distributed Systems' by Satzger al. as defined in their paper:

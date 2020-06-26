@@ -10,7 +10,7 @@ import NIO
 /// TODO extend API to include notification facility from the MultiNodeCutDetector, to allow to fast-track partition detection
 protocol EdgeFailureDetectorProvider {
 
-    func createInstance(subject endpoint: Endpoint) -> () -> EventLoopFuture<FailureDetectionResult>
+    func createInstance(subject: Endpoint) throws -> () -> EventLoopFuture<FailureDetectionResult>
 
 }
 

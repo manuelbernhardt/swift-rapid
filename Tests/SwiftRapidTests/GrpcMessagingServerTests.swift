@@ -2,16 +2,18 @@ import XCTest
 import NIO
 @testable import SwiftRapid
 
-class GrpcMessagingServerTest: XCTestCase {
+class GrpcMessagingServerTest: XCTestCase, TestClientMessaging {
 
-    var group: MultiThreadedEventLoopGroup? = nil
+    var clientGroup: MultiThreadedEventLoopGroup? = nil
+    var clientSettings: Settings = Settings()
 
     override func setUp() {
-        group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        clientGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        clientSettings = Settings()
     }
 
     override func tearDown() {
-        try! group?.syncShutdownGracefully()
+        try! clientGroup?.syncShutdownGracefully()
     }
 
     func testHandleMessageWithoutMembershipService() throws {
@@ -28,7 +30,7 @@ class GrpcMessagingServerTest: XCTestCase {
     func testHandleMessageWithMembershipService() throws {
 
         let address = addressFromParts("localhost", 8000)
-        let testService = TestMembershipService(el: group!.next())
+        let testService = TestMembershipService(el: clientGroup!.next())
         withServer(address, { server in
             withTestClient { testClient in
                 server.onMembershipServiceInitialized(membershipService: testService)
@@ -40,7 +42,7 @@ class GrpcMessagingServerTest: XCTestCase {
     }
 
     private func withServer<T>(_ address: Endpoint, _ body: (MessagingServer) -> T) -> T {
-        let server = GrpcMessagingServer(address: address, group: group!)
+        let server = GrpcMessagingServer(address: address, group: clientGroup!)
         try! server.start()
         defer {
             try! server.shutdown()
@@ -48,33 +50,8 @@ class GrpcMessagingServerTest: XCTestCase {
         return body(server)
     }
 
-    private func withTestClient<T>(_ body: (MessagingClient) -> T) -> T {
-        let testClient = TestGrpcMessagingClient(group: group!, settings: Settings())
-        defer {
-            try! testClient.shutdown(el: group!.next())
-        }
-        return body(testClient)
-    }
-
     static var allTests = [
         ("testHandleMessageWithoutMembershipService", testHandleMessageWithoutMembershipService),
         ("testHandleMessageWithMembershipService", testHandleMessageWithMembershipService)
     ]
-}
-
-class TestGrpcMessagingClient: GrpcMessagingClient {
-
-}
-
-class TestMembershipService: MembershipService {
-    let el: EventLoop
-    var request: RapidRequest? = nil
-    init(el: EventLoop) {
-        self.el = el
-    }
-    func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse> {
-        self.request = request
-        let response = RapidResponse()
-        return el.makeSucceededFuture(response)
-    }
 }

@@ -6,7 +6,7 @@ import GRPC
 @testable import SwiftRapid
 
 
-class GrpcMessagingClientTest: XCTestCase {
+class GrpcMessagingClientTest: XCTestCase, TestClientMessaging, TestServerMessaging {
 
     var serverGroup: MultiThreadedEventLoopGroup? = nil
     var clientGroup: MultiThreadedEventLoopGroup? = nil
@@ -54,15 +54,6 @@ class GrpcMessagingClientTest: XCTestCase {
 
     }
 
-    private func withTestServer<T>(_ address: Endpoint, _ body: (TestMessagingServer) -> T) -> T {
-        let server = TestMessagingServer(address: address, group: serverGroup!)
-        try! server.start()
-        defer {
-            try! server.shutdown()
-        }
-        return body(server)
-    }
-
     private func withClient<T>(_ body: (MessagingClient) -> T) -> T {
         let client = GrpcMessagingClient(group: clientGroup!, settings: clientSettings)
         defer {
@@ -78,34 +69,3 @@ class GrpcMessagingClientTest: XCTestCase {
 
 }
 
-class TestMessagingServer: GrpcMessagingServer {
-
-    private let group: MultiThreadedEventLoopGroup
-    private var requests: [RapidRequest] = []
-    private let lock: Lock = Lock()
-
-    var responseDelayInSeconds: UInt32 = 0
-
-    override init(address: Endpoint, group: MultiThreadedEventLoopGroup) {
-        self.group = group
-        super.init(address: address, group: group)
-        let testMembershipService = TestMembershipService(el: group.next())
-        onMembershipServiceInitialized(membershipService: testMembershipService)
-    }
-
-    func requestCount() -> Int {
-        lock.withLock {
-            requests.count
-        }
-    }
-
-    override func sendRequest(request: RapidRequest, context: StatusOnlyCallContext) -> EventLoopFuture<RapidResponse> {
-
-        sleep(responseDelayInSeconds)
-
-        return lock.withLock {
-            requests.append(request)
-            return super.sendRequest(request: request, context: context)
-        }
-    }
-}
