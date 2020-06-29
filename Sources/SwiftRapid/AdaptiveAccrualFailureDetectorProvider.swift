@@ -1,5 +1,6 @@
 import Foundation
 import NIO
+import NIOConcurrencyHelpers
 
 class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
 
@@ -20,32 +21,34 @@ class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
         }
     }
 
-    func createInstance(subject: Endpoint) throws -> () -> EventLoopFuture<FailureDetectionResult> {
+    func createInstance(subject: Endpoint, signalFailure: @escaping () -> EventLoopFuture<()>) throws -> () -> EventLoopFuture<()> {
 
         // TODO read from settings
         let fd = try AdaptiveAccrualFailureDetector(threshold: 0.2, maxSampleSize: 1000, scalingFactor: 0.9, clock: currentTimeNanos)
 
-        func run() -> EventLoopFuture<FailureDetectionResult> {
-            if (!fd.isAvailable()) {
-                return el.makeSucceededFuture(FailureDetectionResult.failure)
-            } else {
-                let probeResponse = messagingClient
-                        .sendMessageBestEffort(recipient: subject, msg: probeRequest)
-                        .hop(to: el) // make sure we always process these from the same event loop
+        // TODO review the event loop gymnastics here. the aim is to run fd.isAvailable() and fd.heartbeat() from the same thread
+        func run() -> EventLoopFuture<()> {
+            let tick = currentTimeNanos()
+            return el.flatSubmit {
+                if (!fd.isAvailable(at: tick)) {
+                    return signalFailure()
+                } else {
+                    let probeResponse = self.messagingClient
+                            .sendMessageBestEffort(recipient: subject, msg: self.probeRequest)
+                            .hop(to: self.el) // make sure we always process these from the same event loop
 
-                probeResponse.whenSuccess { response in
-                    switch(response.content) {
-                        case .probeResponse:
-                            // TODO handle probe status / fail after too many probes in initializing state
-                            fd.heartbeat()
-                            return
-                        default:
-                            return
+                    probeResponse.whenSuccess { response in
+                        switch(response.content) {
+                            case .probeResponse:
+                                // TODO handle probe status / fail after too many probes in initializing state
+                                fd.heartbeat()
+                                return
+                            default:
+                                return
+                        }
                     }
-                }
 
-                return probeResponse.map { _ in
-                    FailureDetectionResult.success
+                    return self.el.makeSucceededFuture(())
                 }
             }
         }
@@ -110,14 +113,14 @@ class AdaptiveAccrualFailureDetector {
     }
 
     func isAvailable() -> Bool {
-        return isAvailable(timestamp: clock())
+        return isAvailable(at: clock())
     }
 
     func suspicion() -> Double {
         return suspicion(timestamp: clock())
     }
 
-    private func isAvailable(timestamp: UInt64) -> Bool {
+    func isAvailable(at timestamp: UInt64) -> Bool {
         return suspicion(timestamp: timestamp) < threshold
     }
 

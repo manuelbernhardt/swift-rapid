@@ -58,3 +58,9 @@ enum ValidityError: Error {
 func currentTimeNanos() -> UInt64 {
     return DispatchTime.now().uptimeNanoseconds
 }
+
+extension Thread {
+    class func printCurrent() {
+        print("\(Thread.current)" + " Q: \(OperationQueue.current?.underlyingQueue?.label ?? "None")")
+    }
+}

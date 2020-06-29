@@ -10,12 +10,6 @@ import NIO
 /// TODO extend API to include notification facility from the MultiNodeCutDetector, to allow to fast-track partition detection
 protocol EdgeFailureDetectorProvider {
 
-    func createInstance(subject: Endpoint) throws -> () -> EventLoopFuture<FailureDetectionResult>
+    func createInstance(subject: Endpoint, signalFailure: @escaping () -> EventLoopFuture<()>) throws -> () -> EventLoopFuture<()>
 
-}
-
-// TODO is there a standard enum for this type of operation?
-enum FailureDetectionResult {
-    case success
-    case failure
 }
