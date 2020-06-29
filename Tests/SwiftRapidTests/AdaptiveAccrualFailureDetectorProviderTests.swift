@@ -3,6 +3,7 @@ import NIOConcurrencyHelpers
 import XCTest
 @testable import SwiftRapid
 
+/// Note: heartbeat timing is tuned so that this suite runs well on the CI
 class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessaging, TestClientMessaging {
 
     var serverGroup: MultiThreadedEventLoopGroup? = nil
@@ -41,8 +42,7 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
                 for _ in 0..<10 {
                     let _ = fd()
                     XCTAssertFalse(wasFailureSignaled)
-                    usleep(500000)
-
+                    sleep(1)
                 }
             })
         }
@@ -69,19 +69,19 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
 
                 for _ in 0..<5 {
                     let _ = fd()
-                    usleep(600000)
+                    sleep(1)
                 }
                 XCTAssertEqual(0, failureCount)
-                probeMembershipService.setDelay(delay: 1500000)
+                probeMembershipService.setDelay(delay: 2000000)
                 for _ in 0..<6 {
                     let _ = fd()
-                    usleep(600000)
+                    sleep(1)
                 }
                 // 5 delayed heartbeats, accrual FD starts suspecting after 1 beat
                 XCTAssertEqual(4, failureCount)
 
                 // give the chance to the last heartbeat to come in before the test shuts down all event loops
-                sleep(2)
+                sleep(3)
             })
         }
     }
