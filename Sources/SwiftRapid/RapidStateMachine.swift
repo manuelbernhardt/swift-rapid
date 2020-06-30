@@ -110,23 +110,23 @@ struct RapidStateMachine {
 
     // TODO not all of these are mutating, some are just side-effecting
 
-    mutating func handleJoin(msg: JoinMessage) throws {
+    mutating func handleJoin(msg: JoinMessage) throws -> RapidResponse {
         fatalError("Not implemented")
     }
 
-    mutating func handleAlert(msg: BatchedAlertMessage) throws {
+    mutating func handleAlert(msg: BatchedAlertMessage) throws  -> RapidResponse {
         fatalError("Not implemented")
     }
 
-    mutating func handleProbe(msg: ProbeMessage) throws {
+    mutating func handleProbe(msg: ProbeMessage) throws  -> RapidResponse {
         fatalError("Not implemented")
     }
 
-    mutating func handleLeave(msg: LeaveMessage) throws {
+    mutating func handleLeave(msg: LeaveMessage) throws -> RapidResponse {
         fatalError("Not implemented")
     }
 
-    mutating func handleConsensus(msg: RapidRequest) throws {
+    mutating func handleConsensus(msg: RapidRequest) throws -> RapidResponse {
         fatalError("Not implemented")
     }
 

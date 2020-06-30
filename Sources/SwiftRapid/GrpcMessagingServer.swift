@@ -15,7 +15,7 @@ class GrpcMessagingServer: MessagingServer, MembershipServiceProvider {
     }
 
     func start() throws {
-        Server
+        let _ = Server
             .insecure(group: group)
             .withServiceProviders([self])
             .bind(host: String(decoding: selfAddress.hostname, as: UTF8.self), port: Int(selfAddress.port))
