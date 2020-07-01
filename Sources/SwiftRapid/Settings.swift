@@ -1,4 +1,5 @@
 import Foundation
+import NIO
 
 /// Rapid settings
 struct Settings {
@@ -7,7 +8,9 @@ struct Settings {
     let H = 9
     let L = 4
 
-    var ConsensusFallbackBaseDelayInMs: Int = 1000
+    var failureDetectorInterval = TimeAmount.seconds(1)
 
-    var MessagingClientRequestTimeoutInMs: Int = 5000
+    var consensusFallbackBaseDelay = TimeAmount.seconds(1)
+
+    var messagingClientRequestTimeout = TimeAmount.seconds(5)
 }

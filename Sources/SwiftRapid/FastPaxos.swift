@@ -1,4 +1,5 @@
 import Foundation
+import NIO
 
 /// Single-decree Fast Paxos: each node acts both as a proposer and an acceptor, therefore we only have one phase
 ///
@@ -51,7 +52,7 @@ class FastPaxos {
     ///   - proposal: the membership change proposal consisting of all the nodes that have been added / removed
     ///               in comparison to the previous configuration
     func propose(proposal: [Endpoint]) {
-        return propose(proposal: proposal, fallbackDelayInMs: randomFallbackDelayInMs())
+        return propose(proposal: proposal, fallbackDelay: randomFallbackDelay())
     }
 
     /// Propose a value for a fast round with a delay to trigger the recovery protocol
@@ -60,7 +61,7 @@ class FastPaxos {
     ///   - proposal: the membership change proposal consisting of all the nodes that have been added / removed
     ///               in comparison to the previous configuration
     ///   - fallbackDelayInMs: the delay before falling back to classic paxos
-    func propose(proposal: [Endpoint], fallbackDelayInMs: Int) {
+    func propose(proposal: [Endpoint], fallbackDelay: TimeAmount) {
         // TODO inform classic paxos we're running a fast round when implementing paxos
 
         let consensusMessage = FastRoundPhase2bMessage.with {
@@ -113,9 +114,9 @@ class FastPaxos {
 
     }
 
-    private func randomFallbackDelayInMs() -> Int {
+    private func randomFallbackDelay() -> TimeAmount {
         let jitter = -1000 * log(1 - Double.random(in: 0..<1)) / fallbackJitterRate
-        return Int(jitter) + settings.ConsensusFallbackBaseDelayInMs
+        return Int(jitter) + settings.consensusFallbackBaseDelay
     }
 
 

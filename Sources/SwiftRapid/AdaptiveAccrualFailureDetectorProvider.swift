@@ -21,35 +21,32 @@ class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
         }
     }
 
-    func createInstance(subject: Endpoint, signalFailure: @escaping () -> EventLoopFuture<()>) throws -> () -> EventLoopFuture<()> {
+    func createInstance(subject: Endpoint, signalFailure: @escaping (Endpoint) -> ()) throws -> () -> EventLoopFuture<()> {
 
         // TODO read from settings
         let fd = try AdaptiveAccrualFailureDetector(threshold: 0.2, maxSampleSize: 1000, scalingFactor: 0.9, clock: currentTimeNanos)
 
-        // TODO review the event loop gymnastics here. the aim is to run fd.isAvailable() and fd.heartbeat() from the same thread
         func run() -> EventLoopFuture<()> {
             let tick = currentTimeNanos()
-            return el.flatSubmit {
-                if (!fd.isAvailable(at: tick)) {
-                    return signalFailure()
-                } else {
-                    let probeResponse = self.messagingClient
-                            .sendMessageBestEffort(recipient: subject, msg: self.probeRequest)
-                            .hop(to: self.el) // make sure we always process these from the same event loop
+            if (!fd.isAvailable(at: tick)) {
+                return el.makeSucceededFuture(signalFailure(subject))
+            } else {
+                let probeResponse = self.messagingClient
+                        .sendMessageBestEffort(recipient: subject, msg: self.probeRequest)
+                        .hop(to: self.el) // make sure we always process these from the same event loop
 
-                    probeResponse.whenSuccess { response in
-                        switch(response.content) {
-                            case .probeResponse:
-                                // TODO handle probe status / fail after too many probes in initializing state
-                                fd.heartbeat()
-                                return
-                            default:
-                                return
-                        }
+                probeResponse.whenSuccess { response in
+                    switch(response.content) {
+                        case .probeResponse:
+                            // TODO handle probe status / fail after too many probes in initializing state
+                            fd.heartbeat()
+                            return
+                        default:
+                            return
                     }
-
-                    return self.el.makeSucceededFuture(())
                 }
+
+                return self.el.makeSucceededFuture(())
             }
         }
 
