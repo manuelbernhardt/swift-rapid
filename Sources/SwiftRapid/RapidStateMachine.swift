@@ -69,24 +69,22 @@ class RapidStateMachine: Actor {
     }
 
     /// Initialize the Rapid state machine for an existing cluster that this node is joining
-    /// TODO is there no way to overload the other initializer?
-    init(selfEndpoint: Endpoint, settings: Settings, failureDetectorProvider: EdgeFailureDetectorProvider,
+    convenience init(selfEndpoint: Endpoint, settings: Settings, failureDetectorProvider: EdgeFailureDetectorProvider,
          broadcaster: Broadcaster, messagingClient: MessagingClient, selfMetadata: Metadata,
          nodeIds: [NodeId], endpoints: [Endpoint], metadata: [Endpoint: Metadata],
          el: EventLoop) throws {
 
-        self.el = el
+        try self.init(selfEndpoint: selfEndpoint, settings: settings, failureDetectorProvider: failureDetectorProvider,
+                broadcaster: broadcaster, messagingClient: messagingClient, selfMetadata: selfMetadata, el: el)
 
-        let commonState = CommonState(
-            selfEndpoint: selfEndpoint,
-            settings: settings,
-            view: MembershipView(K: settings.K, nodeIds: nodeIds, endpoints: endpoints),
-            metadata: metadata,
-            failureDetectorProvider: failureDetectorProvider,
-            broadcaster: broadcaster,
-            messagingClient: messagingClient)
-
-        self.state = .initial(commonState)
+        switch state {
+            case .initial(var commonState):
+                commonState.view = MembershipView(K: settings.K, nodeIds: nodeIds, endpoints: endpoints)
+                commonState.metadata = metadata
+                self.state = .initial(commonState)
+            default:
+                fatalError("Should not be here")
+        }
     }
 
     /// Starts the state machine by switching to the active state
