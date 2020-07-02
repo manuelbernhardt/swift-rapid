@@ -23,6 +23,7 @@ class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
 
     func createInstance(subject: Endpoint, signalFailure: @escaping (Endpoint) -> ()) throws -> () -> EventLoopFuture<()> {
 
+        // TODO use an actor here to protect against races
         // TODO read from settings
         let fd = try AdaptiveAccrualFailureDetector(threshold: 0.2, maxSampleSize: 1000, scalingFactor: 0.9, clock: currentTimeNanos)
 

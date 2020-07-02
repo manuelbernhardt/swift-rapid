@@ -1,7 +1,7 @@
 import Foundation
 import NIO
 
-struct RapidStateMachine: Actor {
+class RapidStateMachine: Actor {
     typealias MessageType = RapidProtocol
     typealias ResponseType = RapidResponse
 
@@ -11,13 +11,14 @@ struct RapidStateMachine: Actor {
     private var state: State
 
     enum State {
+        case initial(CommonState)
         case active(ActiveState)
         case viewChanging(ViewChangingState)
         case leaving
         case left
     }
 
-    mutating func receive(_ msg: MessageType, _ callback: ((ResponseType) -> ())? = nil) {
+    func receive(_ msg: MessageType, _ callback: ((ResponseType) -> ())? = nil) {
         do {
             switch(msg) {
                 case .rapidRequest(let request):
@@ -64,13 +65,7 @@ struct RapidStateMachine: Actor {
                 broadcaster: broadcaster,
                 messagingClient: messagingClient)
 
-        // FIXME OK this is broken
-        // FIXME we can't reference this here because it references self which isn't initialized yet
-        // so... we could pass in a closure that will reference this - nope
-        // ugh
-        let activeState = try ActiveState(commonState, { subject in self.this().tell(RapidProtocol.subjectFailed(subject)) }, el)
-
-        self.state = .active(activeState)
+        self.state = .initial(commonState)
     }
 
     /// Initialize the Rapid state machine for an existing cluster that this node is joining
@@ -91,9 +86,19 @@ struct RapidStateMachine: Actor {
             broadcaster: broadcaster,
             messagingClient: messagingClient)
 
-        let activeState = try ActiveState(commonState, { subject in self.this().tell(RapidProtocol.subjectFailed(subject)) }, el)
+        self.state = .initial(commonState)
+    }
 
-        self.state = .active(activeState)
+    /// Starts the state machine by switching to the active state
+    /// TODO: it would be nicer not to have to provide the reference here. maybe there's a way
+    func start(ref: ActorRef<RapidStateMachine>) throws {
+        switch state {
+           case .initial(let commonState):
+                let activeState = try ActiveState(commonState, onSubjectFailed: { subject in ref.tell(RapidProtocol.subjectFailed(subject)) }, el: el)
+                self.state = .active(activeState)
+            default:
+                fatalError("Can only start in initial state")
+        }
     }
 
     func onSubjectFailed(_ subject: Endpoint) {
@@ -123,14 +128,14 @@ struct RapidStateMachine: Actor {
         // we only consider those once we have transitioned to the viewChanging state
         var postponedConsensusMessages = [RapidRequest]()
 
-        init(_ common: CommonState, _ onSubjectFailed: @escaping (Endpoint) -> (), _ el: EventLoop) throws {
+        init(_ common: CommonState, onSubjectFailed: @escaping (Endpoint) -> (), el: EventLoop) throws {
             self.common = common
             common.broadcaster.setMembership(recipients: common.view.getRing(k: 0).contents)
             try self.cutDetector = MultiNodeCutDetector(K: common.settings.K, H: common.settings.H, L: common.settings.L)
 
             // failure detectors
             let subjects = try common.view.getSubjectsOf(node: common.selfEndpoint)
-            self.failureDetectors = try subjects.map { subject in
+            try self.failureDetectors = subjects.map { subject in
                 let fd = try common.failureDetectorProvider.createInstance(subject: subject, signalFailure: { failedSubject in
                     onSubjectFailed(failedSubject)
                 })
@@ -142,6 +147,7 @@ struct RapidStateMachine: Actor {
 
             // TODO initialize batching for outgoing alert messages
         }
+
 
         mutating func enqueueAlertMessage(_ msg: AlertMessage) {
             self.alertMessageQueue.append(msg)
@@ -194,25 +200,23 @@ struct RapidStateMachine: Actor {
 
     // ~~~ event handling
 
-    // TODO not all of these are mutating, some are just side-effecting
-
-    mutating func handleJoin(msg: JoinMessage) throws -> RapidResponse {
+    func handleJoin(msg: JoinMessage) throws -> RapidResponse {
         fatalError("Not implemented")
     }
 
-    mutating func handleAlert(msg: BatchedAlertMessage) throws  -> RapidResponse {
+    func handleAlert(msg: BatchedAlertMessage) throws  -> RapidResponse {
         fatalError("Not implemented")
     }
 
-    mutating func handleProbe(msg: ProbeMessage) throws  -> RapidResponse {
+    func handleProbe(msg: ProbeMessage) throws  -> RapidResponse {
         fatalError("Not implemented")
     }
 
-    mutating func handleLeave(msg: LeaveMessage) throws -> RapidResponse {
+    func handleLeave(msg: LeaveMessage) throws -> RapidResponse {
         fatalError("Not implemented")
     }
 
-    mutating func handleConsensus(msg: RapidRequest) throws -> RapidResponse {
+    func handleConsensus(msg: RapidRequest) throws -> RapidResponse {
         fatalError("Not implemented")
     }
 

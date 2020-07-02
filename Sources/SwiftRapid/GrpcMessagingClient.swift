@@ -37,7 +37,8 @@ class GrpcMessagingClient: MessagingClient {
 
         let client: MembershipServiceClient = clients[recipient] ?? connect()
         // TODO retry after timeout
-        return client.sendRequest(msg, callOptions: CallOptions(timeout: try! .nanoseconds(Int(settings.messagingClientRequestTimeout.nanoseconds)))).response
+        let timeout = settings.messagingClientRequestTimeout.nanoseconds / 1000000
+        return client.sendRequest(msg, callOptions: CallOptions(timeout: try! .milliseconds(Int(timeout)))).response
     }
 
     func shutdown(el: EventLoop) throws {

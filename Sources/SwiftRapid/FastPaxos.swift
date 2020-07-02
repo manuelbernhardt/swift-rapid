@@ -115,8 +115,8 @@ class FastPaxos {
     }
 
     private func randomFallbackDelay() -> TimeAmount {
-        let jitter = -1000 * log(1 - Double.random(in: 0..<1)) / fallbackJitterRate
-        return Int(jitter) + settings.consensusFallbackBaseDelay
+        let jitter: Double = -1000 * log(1 - Double.random(in: 0..<1)) / fallbackJitterRate
+        return TimeAmount.nanoseconds(TimeAmount.milliseconds(Int64(jitter)).nanoseconds + settings.consensusFallbackBaseDelay.nanoseconds)
     }
 
 

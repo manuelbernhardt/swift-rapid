@@ -22,35 +22,28 @@ protocol Actor {
     ///               Can be used both as a way to execute side-effecting code or to return a response
     mutating func receive(_ msg: MessageType, _ callback: ((ResponseType) ->())?)
 }
-extension Actor {
-    // TODO be less of a troll with the naming
-    // also, why do extensions not allow for stored properties???
-    func this() -> ActorRef<MessageType, ResponseType> {
-        ActorRef(for: self)
-    }
-}
 
-class ActorRef<MessageType, ResponseType> {
+class ActorRef<A: Actor> {
 
-    private let actor: Actor
+    private var actor: A
 
-    init(for actor: Actor) {
+    init(for actor: A) {
         self.actor = actor
     }
 
     /// Handle a message in a fire-and-forget fashion
-    func tell(_ msg: MessageType) {
+    func tell(_ msg: A.MessageType) {
         actor.dispatchQueue.async {
-            self.receive(msg, nil)
+            self.actor.receive(msg, nil)
         }
     }
 
     /// Handle a message that expects to return a response at some point
-    func ask(_ msg: MessageType) -> EventLoopFuture<ResponseType> {
-        let promise = actor.el.makePromise(of: ResponseType.self)
-        let callback = { (result: ResponseType) in promise.succeed(result) }
+    func ask(_ msg: A.MessageType) -> EventLoopFuture<A.ResponseType> {
+        let promise = actor.el.makePromise(of: A.ResponseType.self)
+        let callback = { (result: A.ResponseType) in promise.succeed(result) }
         actor.dispatchQueue.async {
-            self.receive(msg, callback)
+            self.actor.receive(msg, callback)
         }
         return promise.futureResult
     }
@@ -64,7 +57,7 @@ class ActorRefProvider {
         self.el = el
     }
 
-    func actorFor<MessageType, ResponseType>(_ actor: Actor, messageType: MessageType.Type, responseType: ResponseType.Type) -> ActorRef<MessageType, ResponseType> {
-        actor.this
+    func actorFor<A>(_ actor: A) -> ActorRef<A> where A: Actor {
+        ActorRef(for: actor)
     }
 }

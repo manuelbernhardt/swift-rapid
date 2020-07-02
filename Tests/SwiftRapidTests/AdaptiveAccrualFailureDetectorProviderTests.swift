@@ -32,9 +32,8 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
                 let provider = AdaptiveAccrualFailureDetectorProvider(selfAddress: address, messagingClient: client, el: clientGroup!.next())
 
                 var wasFailureSignaled = false
-                func signalFailure() -> EventLoopFuture<()> {
+                func signalFailure(endpoint: Endpoint) {
                     wasFailureSignaled = true
-                    return serverGroup!.next().makeSucceededFuture(())
                 }
 
                 let fd = try! provider.createInstance(subject: subjectAddress, signalFailure: signalFailure)
@@ -60,9 +59,8 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
                 let provider = AdaptiveAccrualFailureDetectorProvider(selfAddress: address, messagingClient: client, el: clientGroup!.next())
 
                 var failureCount = 0
-                func signalFailure() -> EventLoopFuture<()> {
+                func signalFailure(endpoint: Endpoint) -> () {
                     failureCount += 1
-                    return serverGroup!.next().makeSucceededFuture(())
                 }
 
                 let fd = try! provider.createInstance(subject: subjectAddress, signalFailure: signalFailure)
