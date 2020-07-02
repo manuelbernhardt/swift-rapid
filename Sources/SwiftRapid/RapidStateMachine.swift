@@ -18,26 +18,26 @@ class RapidStateMachine: Actor {
         case left
     }
 
-    func receive(_ msg: MessageType, _ callback: ((ResponseType) -> ())? = nil) {
+    func receive(_ msg: MessageType, _ callback: ((Result<ResponseType, Error>) -> ())? = nil) {
         do {
             switch(msg) {
                 case .rapidRequest(let request):
                     switch request.content {
                         case .joinMessage(let join):
                             let response = try handleJoin(msg: join)
-                            callback?(response)
+                            callback?(Result.success(response))
                         case .batchedAlertMessage(let alert):
                             let response = try handleAlert(msg: alert)
-                            callback?(response)
+                            callback?(Result.success(response))
                         case .probeMessage(let probe):
                             let response = try handleProbe(msg: probe)
-                            callback?(response)
+                            callback?(Result.success(response))
                         case .fastRoundPhase2BMessage, .phase1AMessage, .phase1BMessage, .phase2AMessage, .phase2BMessage:
                             let response = try handleConsensus(msg: request)
-                            callback?(response)
+                            callback?(Result.success(response))
                         case .leaveMessage(let leave):
                             let response = try handleLeave(msg: leave)
-                            callback?(response)
+                            callback?(Result.success(response))
                         case .none:
                             return
                         }
@@ -45,7 +45,7 @@ class RapidStateMachine: Actor {
                     onSubjectFailed(subject)
             }
         } catch {
-            // TODO error handling - need to change the callback so it may fail
+            callback?(Result.failure(error))
         }
     }
 

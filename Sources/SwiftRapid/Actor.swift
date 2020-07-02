@@ -20,7 +20,7 @@ protocol Actor {
     ///   - msg: the message to process
     ///   - callback: an optional callback passed by the caller to be invoked once processing is done.
     ///               Can be used both as a way to execute side-effecting code or to return a response
-    mutating func receive(_ msg: MessageType, _ callback: ((ResponseType) ->())?)
+    mutating func receive(_ msg: MessageType, _ callback: ((Result<ResponseType, Error>) ->())?)
 }
 
 class ActorRef<A: Actor> {
@@ -41,11 +41,19 @@ class ActorRef<A: Actor> {
     /// Handle a message that expects to return a response at some point
     func ask(_ msg: A.MessageType) -> EventLoopFuture<A.ResponseType> {
         let promise = actor.el.makePromise(of: A.ResponseType.self)
-        let callback = { (result: A.ResponseType) in promise.succeed(result) }
+        let callback = { (result: Result<A.ResponseType, Error>) in
+            switch result {
+                case .success(let value):
+                    promise.succeed(value)
+                case .failure(let error):
+                    promise.fail(error)
+                }
+        }
         actor.dispatchQueue.async {
             self.actor.receive(msg, callback)
         }
         return promise.futureResult
+
     }
 
 }
