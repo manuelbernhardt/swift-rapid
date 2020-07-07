@@ -1,5 +1,6 @@
 import Foundation
 import Dispatch
+import NIO
 
 public func addressFromParts(_ hostname: String, _ port: Int) -> Endpoint {
     return Endpoint.with {
@@ -62,5 +63,11 @@ func currentTimeNanos() -> UInt64 {
 extension Thread {
     class func printCurrent() {
         print("\(Thread.current)" + " Q: \(OperationQueue.current?.underlyingQueue?.label ?? "None")")
+    }
+}
+
+public extension NIODeadline {
+    func isOverdue() -> Bool {
+        self.uptimeNanoseconds < DispatchTime.now().uptimeNanoseconds
     }
 }

@@ -43,8 +43,8 @@ class MultiNodeCutDetector {
     /// Apply a AlertMessage against the cut detector. When an update moves a host
     /// past the H threshold of reports, and no other host has between H and L reports, the
     /// method returns a view change proposal.
-    public func aggregate(msg: AlertMessage) -> [Endpoint] {
-        return msg.ringNumber.flatMap { aggregate(src: msg.edgeSrc, dst: msg.edgeDst, edgeStatus: msg.edgeStatus, ringNumber: $0) }
+    public func aggregate(alert: AlertMessage) -> [Endpoint] {
+        return alert.ringNumber.flatMap { aggregate(src: alert.edgeSrc, dst: alert.edgeDst, edgeStatus: alert.edgeStatus, ringNumber: $0) }
     }
 
     private func aggregate(src: Endpoint, dst: Endpoint, edgeStatus: EdgeStatus, ringNumber: Int32) -> [Endpoint] {

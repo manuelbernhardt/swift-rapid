@@ -21,7 +21,7 @@ class RapidMembershipService: MembershipService {
         // TODO don't build this here
         let provider = ActorRefProvider(el: el)
 
-        let stateMachine1 = try RapidStateMachine(
+        let stateMachine = try RapidStateMachine(
                 selfEndpoint: selfEndpoint,
                 settings: settings,
                 failureDetectorProvider: failureDetectorProvider,
@@ -30,7 +30,8 @@ class RapidMembershipService: MembershipService {
                 selfMetadata: selfMetadata,
                 el: el
         )
-        self.stateMachine = provider.actorFor(stateMachine1)
+        self.stateMachine = provider.actorFor(stateMachine)
+        try stateMachine.start(ref: self.stateMachine)
     }
     
     func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse> {

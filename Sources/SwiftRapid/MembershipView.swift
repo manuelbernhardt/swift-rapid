@@ -131,13 +131,13 @@ final class MembershipView {
 
     /// Retrieves the ring numbers of an observer for the given subject such that
     /// subject is a successor of observer on ring[k]
-    func getRingNumbers(observer: Endpoint, subject: Endpoint) throws -> [Int] {
+    func getRingNumbers(observer: Endpoint, subject: Endpoint) throws -> [Int32] {
         let subjects = try getSubjectsOf(node: observer)
         if (subjects.isEmpty) {
             return []
         }
-        var ringIndexes = [Int]()
-        var ringNumber = 0
+        var ringIndexes = [Int32]()
+        var ringNumber: Int32 = 0
         for node in subjects {
             if (node == subject) {
                 ringIndexes.append(ringNumber)
@@ -229,8 +229,8 @@ final class MembershipView {
 }
 
 struct Configuration {
-    private let nodeIds: Set<NodeId>
-    private let endpoints: [Endpoint]
+    let nodeIds: Set<NodeId>
+    let endpoints: [Endpoint]
     let configurationId: UInt64
 
     init(nodeIds: Set<NodeId>, endpoints: [Endpoint]) {
