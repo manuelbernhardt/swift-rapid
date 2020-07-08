@@ -10,7 +10,8 @@ public func allTests() -> [XCTestCaseEntry] {
         testCase(AdaptiveAccrualFailureDetectorTest.allTests),
         testCase(GrpcMessagingServerTest.allTests),
         testCase(GrpcMessagingClientTest.allTests),
-        testCase(AdaptiveAccrualFailureDetectorProviderTests.allTests)
+        testCase(AdaptiveAccrualFailureDetectorProviderTests.allTests),
+        testCase(MessagingTest.allTests)
     ]
 }
 #endif

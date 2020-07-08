@@ -2,6 +2,7 @@ import Foundation
 import NIO
 import Dispatch
 
+// TODO now we use one event loop for all FDs which may not be all that great
 class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
 
     private let messagingClient: MessagingClient
@@ -40,6 +41,7 @@ class AdaptiveAccrualFailureDetectorActor: Actor {
 
     private let probeRequest: RapidRequest
 
+    // TODO be less of a troll with the naming
     private var this: ActorRef<AdaptiveAccrualFailureDetectorActor>? = nil
 
     init(subject: Endpoint, selfEndpoint: Endpoint, signalFailure: @escaping (Endpoint) -> (), messagingClient: MessagingClient, el: EventLoop) throws {
@@ -67,7 +69,6 @@ class AdaptiveAccrualFailureDetectorActor: Actor {
         case .tick:
             let now = currentTimeNanos()
             if (!fd.isAvailable(at: now)) {
-                print("not available")
                 callback?(Result.success(signalFailure(subject)))
             } else {
                 let probeResponse = self.messagingClient

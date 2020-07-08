@@ -9,21 +9,20 @@ protocol MembershipService {
 
 class RapidMembershipService: MembershipService {
 
-    private let el: EventLoop
+    private let provider: ActorRefProvider
     private let stateMachine: ActorRef<RapidStateMachine>
 
     /// Initializer for a new cluster (this is the bootstrapping node)
-    init(el: EventLoop, selfEndpoint: Endpoint, settings: Settings, failureDetectorProvider: EdgeFailureDetectorProvider,
-         broadcaster: Broadcaster, messagingClient: MessagingClient, selfMetadata: Metadata) throws {
+    init(selfEndpoint: Endpoint, settings: Settings, view: MembershipView, failureDetectorProvider: EdgeFailureDetectorProvider,
+         broadcaster: Broadcaster, messagingClient: MessagingClient, selfMetadata: Metadata,
+         provider: ActorRefProvider, el: EventLoop) throws {
 
-        self.el = el
-
-        // TODO don't build this here
-        let provider = ActorRefProvider(el: el)
+        self.provider = provider
 
         let stateMachine = try RapidStateMachine(
                 selfEndpoint: selfEndpoint,
                 settings: settings,
+                view: view,
                 failureDetectorProvider: failureDetectorProvider,
                 broadcaster: broadcaster,
                 messagingClient: messagingClient,

@@ -22,7 +22,7 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
     }
 
     func testSuccessfulHeartbeats() throws {
-        let provider = ActorRefProvider(el: clientGroup!.next())
+        let provider = ActorRefProvider()
         let address = addressFromParts("localhost", 8000)
         let subjectAddress = addressFromParts("localhost", 8090)
 
@@ -49,7 +49,7 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
     }
 
     func testDelayedHeartbeats() throws {
-        let provider = ActorRefProvider(el: clientGroup!.next())
+        let provider = ActorRefProvider()
 
         let address = addressFromParts("localhost", 8000)
         let subjectAddress = addressFromParts("localhost", 8090)

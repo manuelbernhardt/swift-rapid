@@ -22,11 +22,6 @@ class GrpcMessagingServer: MessagingServer, MembershipServiceProvider {
             .map {
                 self.server = $0
             }
-
-        try server.map {
-            try $0.onClose.wait()
-        }
-
     }
 
     func shutdown() throws {

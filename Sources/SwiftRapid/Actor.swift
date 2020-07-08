@@ -6,8 +6,13 @@ import NIO
 /// one thread will be accessing the underlying resources at the same time, which is useful for interacting
 /// with constructs that are not thread-safe.
 ///
+/// TODO right now working with this is clunky because the initialized actor doesn't know its own reference so implementations
+/// TODO of this protocol have to cater for this in one way or another
+///
+/// TODO the actor ref provider should ideally manage the event loops for all actors - maybe. in truth these EL's don't do much,
+/// TODO they are used by the actor ref's ask to provide a promise
+///
 /// TODO think of a (simple) mechanism by which to simplify the receive (the callback doesn't look all that nice)
-/// TODO initialize actor ref internally somehow
 protocol Actor {
     associatedtype MessageType
     associatedtype ResponseType
@@ -60,12 +65,6 @@ class ActorRef<A: Actor> {
 }
 
 class ActorRefProvider {
-    private let el: EventLoop
-
-    init(el: EventLoop) {
-        self.el = el
-    }
-
     func actorFor<A>(_ actor: A) -> ActorRef<A> where A: Actor {
         ActorRef(for: actor)
     }

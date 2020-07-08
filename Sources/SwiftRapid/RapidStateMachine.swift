@@ -47,7 +47,7 @@ class RapidStateMachine: Actor {
     }
 
     /// Initialize the Rapid state machine for an empty cluster (this is the bootstrapping node)
-    init(selfEndpoint: Endpoint, settings: Settings, failureDetectorProvider: EdgeFailureDetectorProvider,
+    init(selfEndpoint: Endpoint, settings: Settings, view: MembershipView, failureDetectorProvider: EdgeFailureDetectorProvider,
          broadcaster: Broadcaster, messagingClient: MessagingClient, selfMetadata: Metadata,
          el: EventLoop) throws {
 
@@ -56,7 +56,7 @@ class RapidStateMachine: Actor {
         let commonState = CommonState(
             selfEndpoint: selfEndpoint,
                 settings: settings,
-                view: MembershipView(K: settings.K),
+                view: view,
                 metadata: [selfEndpoint: selfMetadata],
                 failureDetectorProvider: failureDetectorProvider,
                 broadcaster: broadcaster,
@@ -67,12 +67,12 @@ class RapidStateMachine: Actor {
     }
 
     /// Initialize the Rapid state machine for an existing cluster that this node is joining
-    convenience init(selfEndpoint: Endpoint, settings: Settings, failureDetectorProvider: EdgeFailureDetectorProvider,
+    convenience init(selfEndpoint: Endpoint, settings: Settings, view: MembershipView, failureDetectorProvider: EdgeFailureDetectorProvider,
          broadcaster: Broadcaster, messagingClient: MessagingClient, selfMetadata: Metadata,
          nodeIds: [NodeId], endpoints: [Endpoint], metadata: [Endpoint: Metadata],
          el: EventLoop) throws {
 
-        try self.init(selfEndpoint: selfEndpoint, settings: settings, failureDetectorProvider: failureDetectorProvider,
+        try self.init(selfEndpoint: selfEndpoint, settings: settings, view: view, failureDetectorProvider: failureDetectorProvider,
                 broadcaster: broadcaster, messagingClient: messagingClient, selfMetadata: selfMetadata, el: el)
 
         switch state {
@@ -90,9 +90,14 @@ class RapidStateMachine: Actor {
     func start(ref: ActorRef<RapidStateMachine>) throws {
         switch state {
            case .initial(let commonState):
-                let activeState = try ActiveState(commonState, ref: ref)
+               let activeState = try ActiveState(commonState, ref: ref)
                 self.state = .active(activeState)
-            default:
+
+               // batch alerts
+               commonState.el.scheduleRepeatedTask(initialDelay: commonState.settings.batchingWindow, delay: commonState.settings.batchingWindow) { _ in
+                   ref.tell(.batchedAlertTick)
+               }
+           default:
                 fatalError("Can only start in initial state")
         }
     }
@@ -129,12 +134,9 @@ class RapidStateMachine: Actor {
 
             // failure detectors
             let subjects = try common.view.getSubjectsOf(node: common.selfEndpoint)
-            let ref = self.this
             try self.failureDetectors = subjects.map { subject in
                 let fd = try common.failureDetectorProvider.createInstance(subject: subject, signalFailure: { failedSubject in
-                    common.el.scheduleRepeatedTask(initialDelay: common.settings.batchingWindow, delay: common.settings.batchingWindow) { _ in
-                        ref.tell(.batchedAlertTick)
-                    }
+                    ref.tell(.subjectFailed(subject))
                 })
                 let fdTask = { (task: RepeatedTask) in
                     fd()
@@ -195,10 +197,6 @@ class RapidStateMachine: Actor {
                 case .viewChangeDecided:
                     fatalError("How on earth are we here?")
             }
-        }
-
-        private func onSubjectFailed(_ subject: Endpoint) {
-            this.tell(RapidProtocol.subjectFailed(subject))
         }
 
         func applyCutDetection(alerts: [AlertMessage]) -> [Endpoint] {
@@ -307,6 +305,7 @@ class RapidStateMachine: Actor {
                 configurationId: common.view.getCurrentConfigurationId(),
                 membershipSize: common.view.getMembershipSize(),
                 decisionCallback: { (endpoints: [Endpoint]) in
+                    print("about to crash now")
                     previousState.this.tell(.viewChangeDecided(endpoints))
                 },
                 broadcaster: self.common.broadcaster,
