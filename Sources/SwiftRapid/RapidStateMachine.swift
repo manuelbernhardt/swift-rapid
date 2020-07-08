@@ -10,7 +10,6 @@ class RapidStateMachine: Actor {
     typealias ResponseType = RapidResponse
 
     internal let el: EventLoop
-    internal let dispatchQueue = DispatchQueue(label: "rapid.serial.queue")
 
     private var state: State
 
@@ -92,14 +91,33 @@ class RapidStateMachine: Actor {
            case .initial(let commonState):
                let activeState = try ActiveState(commonState, ref: ref)
                 self.state = .active(activeState)
-
-               // batch alerts
-               commonState.el.scheduleRepeatedTask(initialDelay: commonState.settings.batchingWindow, delay: commonState.settings.batchingWindow) { _ in
-                   ref.tell(.batchedAlertTick)
-               }
            default:
                 fatalError("Can only start in initial state")
         }
+    }
+
+    @discardableResult
+    func shutdown() -> EventLoopFuture<Void> {
+        func cancelFailureDetectors(failureDetectors: [RepeatedTask]) -> EventLoopFuture<Void> {
+            let cancellationFutures: [EventLoopFuture<Void>] = failureDetectors.map { fd in
+                let promise: EventLoopPromise<Void> = el.makePromise()
+                fd.cancel(promise: promise)
+                return promise.futureResult
+            }
+            return EventLoopFuture.whenAllComplete(cancellationFutures, on: el).map { _ in ()}
+        }
+        switch state {
+            case .active(let activeState):
+                return cancelFailureDetectors(failureDetectors: activeState.failureDetectors)
+            case .viewChanging(let viewChangingState):
+                return cancelFailureDetectors(failureDetectors: viewChangingState.failureDetectors)
+            default:
+                return el.makeSucceededFuture(())
+        }
+    }
+
+    deinit {
+        shutdown()
     }
 
     /// ~~~ protocol
@@ -305,7 +323,6 @@ class RapidStateMachine: Actor {
                 configurationId: common.view.getCurrentConfigurationId(),
                 membershipSize: common.view.getMembershipSize(),
                 decisionCallback: { (endpoints: [Endpoint]) in
-                    print("about to crash now")
                     previousState.this.tell(.viewChangeDecided(endpoints))
                 },
                 broadcaster: self.common.broadcaster,

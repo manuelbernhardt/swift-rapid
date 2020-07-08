@@ -27,7 +27,9 @@ extension TestClientMessaging {
     func withTestClient<T>(_ body: (MessagingClient) -> T) -> T {
         let testClient = TestGrpcMessagingClient(group: clientGroup!, settings: clientSettings)
         defer {
-            try! testClient.shutdown(el: clientGroup!.next())
+            if let group = clientGroup {
+                try! testClient.shutdown(el: group.next())
+            }
         }
         return body(testClient)
     }

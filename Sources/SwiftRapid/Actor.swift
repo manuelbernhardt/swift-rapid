@@ -18,7 +18,6 @@ protocol Actor {
     associatedtype ResponseType
 
     var el: EventLoop { get }
-    var dispatchQueue: DispatchQueue { get }
 
     /// The entry point to implement in order to process messages
     ///
@@ -33,13 +32,16 @@ class ActorRef<A: Actor> {
 
     private var actor: A
 
+    private let dispatchQueue: DispatchQueue
+
     init(for actor: A) {
         self.actor = actor
+        self.dispatchQueue = DispatchQueue(label: String(describing: actor.self))
     }
 
     /// Handle a message in a fire-and-forget fashion
     func tell(_ msg: A.MessageType) {
-        actor.dispatchQueue.async {
+        dispatchQueue.async {
             self.actor.receive(msg, nil)
         }
     }
@@ -55,7 +57,7 @@ class ActorRef<A: Actor> {
                     promise.fail(error)
                 }
         }
-        actor.dispatchQueue.async {
+        dispatchQueue.async {
             self.actor.receive(msg, callback)
         }
         return promise.futureResult

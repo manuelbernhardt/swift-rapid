@@ -32,7 +32,6 @@ class AdaptiveAccrualFailureDetectorActor: Actor {
     typealias ResponseType = Void // TODO Nothing type???
 
     internal let el: EventLoop
-    internal let dispatchQueue: DispatchQueue
     private let subject: Endpoint
     private let selfEndpoint: Endpoint
     private let signalFailure: (Endpoint) -> ()
@@ -50,7 +49,6 @@ class AdaptiveAccrualFailureDetectorActor: Actor {
         self.signalFailure = signalFailure
         self.messagingClient = messagingClient
         self.el = el
-        self.dispatchQueue = DispatchQueue(label: "fd-\(subject.ringHash(seed: 0))")
 
         // TODO config from settings
         try self.fd = AdaptiveAccrualFailureDetector(threshold: 0.2, maxSampleSize: 1000, scalingFactor: 0.9, clock: currentTimeNanos)
