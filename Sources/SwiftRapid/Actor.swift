@@ -7,6 +7,7 @@ import NIO
 /// with constructs that are not thread-safe.
 ///
 /// TODO think of a (simple) mechanism by which to simplify the receive (the callback doesn't look all that nice)
+/// TODO initialize actor ref internally somehow
 protocol Actor {
     associatedtype MessageType
     associatedtype ResponseType

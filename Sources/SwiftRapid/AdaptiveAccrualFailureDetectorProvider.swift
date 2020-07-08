@@ -1,60 +1,100 @@
 import Foundation
 import NIO
-import NIOConcurrencyHelpers
+import Dispatch
 
 class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
 
     private let messagingClient: MessagingClient
     private let el: EventLoop
-    private let selfAddress: Endpoint
+    private let selfEndpoint: Endpoint
+    private let provider: ActorRefProvider
 
-    private let probeRequest: RapidRequest
-
-    init(selfAddress: Endpoint, messagingClient: MessagingClient, el: EventLoop) {
-        self.selfAddress = selfAddress
+    init(selfEndpoint: Endpoint, messagingClient: MessagingClient, provider: ActorRefProvider, el: EventLoop) {
+        self.selfEndpoint = selfEndpoint
         self.messagingClient = messagingClient
+        self.provider = provider
         self.el = el
-        self.probeRequest = RapidRequest.with {
-            $0.probeMessage = ProbeMessage.with({
-                $0.sender = selfAddress
-            })
-        }
     }
 
     func createInstance(subject: Endpoint, signalFailure: @escaping (Endpoint) -> ()) throws -> () -> EventLoopFuture<()> {
+        let failureDetectorRef = provider.actorFor(try AdaptiveAccrualFailureDetectorActor(subject: subject, selfEndpoint: selfEndpoint, signalFailure: signalFailure, messagingClient: messagingClient, el: el))
+        failureDetectorRef.tell(.initialize(failureDetectorRef))
+        return {
+            failureDetectorRef.ask(AdaptiveAccrualFailureDetectorActor.FailureDetectorProtocol.tick)
+        }
+    }
 
-        // TODO use an actor here to protect against races
-        // TODO read from settings
-        let fd = try AdaptiveAccrualFailureDetector(threshold: 0.2, maxSampleSize: 1000, scalingFactor: 0.9, clock: currentTimeNanos)
+}
 
-        func run() -> EventLoopFuture<()> {
-            let tick = currentTimeNanos()
-            if (!fd.isAvailable(at: tick)) {
-                return el.makeSucceededFuture(signalFailure(subject))
+class AdaptiveAccrualFailureDetectorActor: Actor {
+    typealias MessageType = FailureDetectorProtocol
+    typealias ResponseType = Void // TODO Nothing type???
+
+    internal let el: EventLoop
+    internal let dispatchQueue: DispatchQueue
+    private let subject: Endpoint
+    private let selfEndpoint: Endpoint
+    private let signalFailure: (Endpoint) -> ()
+    private let messagingClient: MessagingClient
+    private let fd: AdaptiveAccrualFailureDetector
+
+    private let probeRequest: RapidRequest
+
+    private var this: ActorRef<AdaptiveAccrualFailureDetectorActor>? = nil
+
+    init(subject: Endpoint, selfEndpoint: Endpoint, signalFailure: @escaping (Endpoint) -> (), messagingClient: MessagingClient, el: EventLoop) throws {
+        self.subject = subject
+        self.selfEndpoint = selfEndpoint
+        self.signalFailure = signalFailure
+        self.messagingClient = messagingClient
+        self.el = el
+        self.dispatchQueue = DispatchQueue(label: "fd-\(subject.ringHash(seed: 0))")
+
+        // TODO config from settings
+        try self.fd = AdaptiveAccrualFailureDetector(threshold: 0.2, maxSampleSize: 1000, scalingFactor: 0.9, clock: currentTimeNanos)
+        self.probeRequest = RapidRequest.with {
+            $0.probeMessage = ProbeMessage.with({
+                $0.sender = selfEndpoint
+            })
+        }
+
+    }
+
+    func receive(_ msg: MessageType, _ callback: ((Result<ResponseType, Error>) -> ())?) {
+        switch(msg) {
+        case .initialize(let ref):
+            self.this = ref
+        case .tick:
+            let now = currentTimeNanos()
+            if (!fd.isAvailable(at: now)) {
+                print("not available")
+                callback?(Result.success(signalFailure(subject)))
             } else {
                 let probeResponse = self.messagingClient
-                        .sendMessageBestEffort(recipient: subject, msg: self.probeRequest)
-                        .hop(to: self.el) // make sure we always process these from the same event loop
+                    .sendMessageBestEffort(recipient: subject, msg: self.probeRequest)
 
                 probeResponse.whenSuccess { response in
                     switch(response.content) {
-                        case .probeResponse:
-                            // TODO handle probe status / fail after too many probes in initializing state
-                            fd.heartbeat()
-                            return
-                        default:
-                            return
+                    case .probeResponse:
+                        // TODO handle probe status / fail after too many probes in initializing state
+                        self.this?.tell(.heartbeat)
+                    default:
+                        return
                     }
                 }
-
-                return self.el.makeSucceededFuture(())
+                callback?(Result.success(()))
             }
+        case .heartbeat:
+            fd.heartbeat()
         }
-
-        return run
     }
 
 
+    enum FailureDetectorProtocol {
+        case initialize(ActorRef<AdaptiveAccrualFailureDetectorActor>)
+        case tick
+        case heartbeat
+    }
 }
 
 ///  Implementation of 'A New Adaptive Accrual Failure Detector for Dependable Distributed Systems' by Satzger al. as defined in their paper:

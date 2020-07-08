@@ -22,6 +22,7 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
     }
 
     func testSuccessfulHeartbeats() throws {
+        let provider = ActorRefProvider(el: clientGroup!.next())
         let address = addressFromParts("localhost", 8000)
         let subjectAddress = addressFromParts("localhost", 8090)
 
@@ -29,7 +30,7 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
             withTestServer(subjectAddress, { (subjectServer: TestMessagingServer) in
                 subjectServer.onMembershipServiceInitialized(membershipService: ProbeMembershipService(el: serverGroup!.next()))
 
-                let provider = AdaptiveAccrualFailureDetectorProvider(selfAddress: address, messagingClient: client, el: clientGroup!.next())
+                let provider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: address, messagingClient: client, provider: provider, el: clientGroup!.next())
 
                 var wasFailureSignaled = false
                 func signalFailure(endpoint: Endpoint) {
@@ -48,6 +49,8 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
     }
 
     func testDelayedHeartbeats() throws {
+        let provider = ActorRefProvider(el: clientGroup!.next())
+
         let address = addressFromParts("localhost", 8000)
         let subjectAddress = addressFromParts("localhost", 8090)
         let probeMembershipService = ProbeMembershipService(el: serverGroup!.next())
@@ -56,7 +59,7 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
             withTestServer(subjectAddress, { (subjectServer: TestMessagingServer) in
                 subjectServer.onMembershipServiceInitialized(membershipService: probeMembershipService)
 
-                let provider = AdaptiveAccrualFailureDetectorProvider(selfAddress: address, messagingClient: client, el: clientGroup!.next())
+                let provider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: address, messagingClient: client, provider: provider, el: clientGroup!.next())
 
                 var failureCount = 0
                 func signalFailure(endpoint: Endpoint) -> () {
