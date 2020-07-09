@@ -5,6 +5,8 @@ protocol MembershipService {
 
     func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse>
 
+    func getMemberList() throws -> [Endpoint]
+
 }
 
 class RapidMembershipService: MembershipService {
@@ -38,6 +40,10 @@ class RapidMembershipService: MembershipService {
 
     func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse> {
         stateMachineRef.ask(RapidStateMachine.RapidProtocol.rapidRequest(request))
+    }
+
+    func getMemberList() throws -> [Endpoint] {
+        try self.stateMachine.getMemberList()
     }
 
     @discardableResult

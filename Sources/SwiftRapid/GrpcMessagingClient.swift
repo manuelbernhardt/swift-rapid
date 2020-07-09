@@ -7,7 +7,7 @@ import GRPC
 class GrpcMessagingClient: MessagingClient {
 
     private let settings: Settings
-    private let group: MultiThreadedEventLoopGroup
+    internal let group: MultiThreadedEventLoopGroup
 
     private var clients = [Endpoint: MembershipServiceClient]()
 

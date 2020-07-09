@@ -23,6 +23,7 @@ class RapidStateMachine: Actor {
 
     enum RapidStateMachineError: Error {
         case messageInInvalidState(State)
+        case viewChangeInProgress
     }
 
     func receive(_ msg: MessageType, _ callback: ((Result<ResponseType, Error>) -> ())? = nil) {
@@ -99,6 +100,17 @@ class RapidStateMachine: Actor {
                self.state = .active(activeState)
            default:
                 fatalError("Can only start in initial state")
+        }
+    }
+
+    func getMemberList() throws -> [Endpoint] {
+        switch state {
+        case .initial, .leaving, .left:
+            return []
+        case .active(let activeState):
+            return activeState.common.view.getRing(k: 0).contents
+        case .viewChanging(let changingState):
+            throw RapidStateMachineError.viewChangeInProgress
         }
     }
 

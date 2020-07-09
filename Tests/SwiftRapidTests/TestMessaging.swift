@@ -1,6 +1,7 @@
 import NIO
 import NIOConcurrencyHelpers
 import GRPC
+import Dispatch
 @testable import SwiftRapid
 
 protocol TestServerMessaging {
@@ -24,8 +25,9 @@ extension TestServerMessaging {
 }
 
 extension TestClientMessaging {
-    func withTestClient<T>(_ body: (MessagingClient) -> T) -> T {
-        let testClient = TestGrpcMessagingClient(group: clientGroup!, settings: clientSettings)
+    func withTestClient<T>(_ body: (MessagingClient) -> T, delay: TimeAmount = TimeAmount.nanoseconds(0)) -> T {
+        var testClient = TestGrpcMessagingClient(group: clientGroup!, settings: clientSettings)
+        testClient.delayBestEffortMessages(for: delay)
         defer {
             if let group = clientGroup {
                 try! testClient.shutdown(el: group.next())
@@ -71,6 +73,20 @@ class TestMessagingServer: GrpcMessagingServer {
 
 class TestGrpcMessagingClient: GrpcMessagingClient {
 
+    private var delay = TimeAmount.nanoseconds(0)
+
+    func delayBestEffortMessages(for amount: TimeAmount) {
+        self.delay = amount
+    }
+
+    override func sendMessageBestEffort(recipient: Endpoint, msg: RapidRequest) -> EventLoopFuture<RapidResponse> {
+        let el = group.next()
+        let promise = el.makePromise(of: RapidResponse.self)
+        el.scheduleTask(in: delay, {
+            promise.completeWith(super.sendMessageBestEffort(recipient: recipient, msg: msg))
+        })
+        return promise.futureResult
+    }
 }
 
 class TestMembershipService: MembershipService {
@@ -83,6 +99,10 @@ class TestMembershipService: MembershipService {
         self.request = request
         let response = RapidResponse()
         return el.makeSucceededFuture(response)
+    }
+
+    func getMemberList() throws -> [Endpoint] {
+        return []
     }
 }
 
