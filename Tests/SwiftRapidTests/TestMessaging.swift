@@ -14,8 +14,8 @@ protocol TestClientMessaging {
 }
 
 extension TestServerMessaging {
-    func withTestServer<T>(_ address: Endpoint, _ body: (TestMessagingServer) -> T) -> T {
-        let server = TestMessagingServer(address: address, group: serverGroup!)
+    func withTestServer<T>(_ address: Endpoint, _ body: (TestMessagingServer) -> T, disableTestMembershipService: Bool = false) -> T {
+        let server = TestMessagingServer(address: address, group: serverGroup!, disableTestMembershipService: disableTestMembershipService)
         try! server.start()
         defer {
             try! server.shutdown()
@@ -46,6 +46,11 @@ class TestMessagingServer: GrpcMessagingServer {
     private let lock: Lock = Lock()
 
     var responseDelayInSeconds: UInt32 = 0
+
+    init(address: Endpoint, group: MultiThreadedEventLoopGroup, disableTestMembershipService: Bool) {
+        self.group = group
+        super.init(address: address, group: group)
+    }
 
     override init(address: Endpoint, group: MultiThreadedEventLoopGroup) {
         self.group = group

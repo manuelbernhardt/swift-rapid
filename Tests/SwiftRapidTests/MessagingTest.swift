@@ -37,7 +37,7 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
                 XCTAssertEqual(2, response.endpoints.count)
 
                 try! service.shutdown().wait()
-            })
+            }, disableTestMembershipService: true)
         }
     }
 
@@ -93,6 +93,63 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
         }
     }
 
+    func testBootstrapAndProbe() throws {
+        let nodeId = nodeIdFromUUID(UUID())
+        let nodeAddress = addressFromParts("127.0.0.1", 1234)
+        let joiningNodeAddress = addressFromParts("127.0.0.1", 1235)
+        let joiningNodeId = nodeIdFromUUID(UUID())
+        let view = MembershipView(K: settings.K)
+        try view.ringAdd(node: nodeAddress, nodeId: nodeId)
+
+
+        withTestClient { client in
+            withTestServer(nodeAddress, { server in
+                let service = try! createMembershipService(serverAddress: nodeAddress, client: client, server: server, nodeId: nodeId)
+
+                let response = try! sendJoinMessage(client: client, nodeAddress: nodeAddress, joiningNodeAddress: joiningNodeAddress, joiningNodeId: joiningNodeId)
+                XCTAssertEqual(JoinStatusCode.safeToJoin, response.statusCode)
+
+                let probe = RapidRequest.with {
+                    $0.probeMessage = ProbeMessage()
+                }
+                let probeResponse: RapidResponse = try! client.sendMessage(recipient: nodeAddress, msg: probe).wait()
+                XCTAssertEqual(NodeStatus.ok, probeResponse.probeResponse.status)
+
+                try! service.shutdown().wait()
+            })
+        }
+    }
+
+    /// Tests a race between probe messages from nodes that have already adopted the new view and a joining node being probed that hasn't received the join response yet
+    func testProbeAndThenBootstrap() throws {
+        let node1Address = addressFromParts("127.0.0.1", 1234)
+        let node2Address = addressFromParts("127.0.0.1", 1235)
+
+        let view = MembershipView(K: settings.K)
+        try view.ringAdd(node: node1Address, nodeId: nodeIdFromUUID(UUID()))
+        try view.ringAdd(node: node2Address, nodeId: nodeIdFromUUID(UUID())) // this way node1 will observe node2
+
+        withTestServer(node1Address, { server1 in
+            withTestServer(node2Address, { server2 in
+                withTestClient { client in
+                    let service = try! createMembershipService(serverAddress: node1Address, client: client, server: server1, initialView: view)
+
+                    let probe = RapidRequest.with {
+                        $0.probeMessage = ProbeMessage()
+                    }
+                    let probe1Response = try! client.sendMessage(recipient: node1Address, msg: probe).wait().probeResponse
+                    XCTAssertEqual(NodeStatus.ok, probe1Response.status)
+
+                    let probe2Response = try! client.sendMessage(recipient: node2Address, msg: probe).wait().probeResponse
+                    XCTAssertEqual(NodeStatus.bootstrapping, probe2Response.status)
+
+                    try! service.shutdown().wait()
+                }
+            })
+        })
+
+    }
+
     private func sendJoinMessage(client: MessagingClient, nodeAddress: Endpoint, joiningNodeAddress: Endpoint, joiningNodeId: NodeId) throws -> JoinResponse {
         let msg = RapidRequest.with {
             $0.joinMessage = JoinMessage.with {
@@ -105,7 +162,9 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
 
     private func createMembershipService(serverAddress: Endpoint, client: MessagingClient, server: MessagingServer, initialView: MembershipView? = nil, nodeId: NodeId = nodeIdFromUUID(UUID())) throws -> RapidMembershipService {
         let view = initialView ?? MembershipView(K: settings.K)
-        try view.ringAdd(node: serverAddress, nodeId: nodeId)
+        if (initialView == nil) {
+            try view.ringAdd(node: serverAddress, nodeId: nodeId)
+        }
         let broadcaster = UnicastToAllBroadcaster(client: client)
         let failureDetectorProvider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: serverAddress, messagingClient: client, provider: provider, el: serverGroup!.next())
         let membershipService = try RapidMembershipService(selfEndpoint: serverAddress, settings: settings, view: view, failureDetectorProvider: failureDetectorProvider,
@@ -118,7 +177,9 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
     static var allTests = [
         ("testJoinFirstNode", testJoinFirstNode),
         ("testJoinFirstNodeWithConflicts", testJoinFirstNodeWithConflicts),
-        ("testJoinWithSingleNodeBootstrap", testJoinWithSingleNodeBootstrap)
+        ("testJoinWithSingleNodeBootstrap", testJoinWithSingleNodeBootstrap),
+        ("testBootstrapAndProbe", testBootstrapAndProbe),
+        ("testProbeAndThenBootstrap", testProbeAndThenBootstrap)
     ]
 
 }

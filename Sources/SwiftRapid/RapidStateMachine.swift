@@ -109,7 +109,7 @@ class RapidStateMachine: Actor {
             return []
         case .active(let activeState):
             return activeState.common.view.getRing(k: 0).contents
-        case .viewChanging(let changingState):
+        case .viewChanging:
             throw RapidStateMachineError.viewChangeInProgress
         }
     }
@@ -177,7 +177,7 @@ class RapidStateMachine: Actor {
                     ref.tell(.subjectFailed(subject))
                 })
                 let fdTask = { (task: RepeatedTask) in
-                    fd()
+                    fd().hop(to: common.el)
                 }
                 return common.el.scheduleRepeatedAsyncTask(initialDelay: TimeAmount.seconds(0), delay: common.settings.failureDetectorInterval, fdTask)
             }

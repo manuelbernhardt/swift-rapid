@@ -38,7 +38,17 @@ class GrpcMessagingServer: MessagingServer, MembershipServiceProvider {
         if let service = membershipService {
             return service.handleRequest(request: request)
         } else {
-            return context.eventLoop.makeSucceededFuture(RapidResponse())
+            switch request.content {
+                case .probeMessage:
+                    let response = RapidResponse.with {
+                        $0.probeResponse = ProbeResponse.with {
+                            $0.status = NodeStatus.bootstrapping
+                        }
+                    }
+                    return context.eventLoop.makeSucceededFuture(response)
+                default:
+                    return context.eventLoop.makeSucceededFuture(RapidResponse())
+            }
         }
     }
 }
