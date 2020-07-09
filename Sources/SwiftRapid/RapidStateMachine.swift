@@ -89,8 +89,14 @@ class RapidStateMachine: Actor {
     func start(ref: ActorRef<RapidStateMachine>) throws {
         switch state {
            case .initial(let commonState):
-               let activeState = try ActiveState(commonState, ref: ref)
-                self.state = .active(activeState)
+               var activeState = try ActiveState(commonState, ref: ref)
+
+               // batch alerts
+               activeState.common.alertBatchJob = el.scheduleRepeatedTask(initialDelay: commonState.settings.batchingWindow, delay: commonState.settings.batchingWindow) { _ in
+                   ref.tell(.batchedAlertTick)
+               }
+
+               self.state = .active(activeState)
            default:
                 fatalError("Can only start in initial state")
         }
@@ -108,8 +114,10 @@ class RapidStateMachine: Actor {
         }
         switch state {
             case .active(let activeState):
+                activeState.common.alertBatchJob?.cancel()
                 return cancelFailureDetectors(failureDetectors: activeState.failureDetectors)
             case .viewChanging(let viewChangingState):
+                viewChangingState.common.alertBatchJob?.cancel()
                 return cancelFailureDetectors(failureDetectors: viewChangingState.failureDetectors)
             default:
                 return el.makeSucceededFuture(())
@@ -490,6 +498,7 @@ class RapidStateMachine: Actor {
         var messagingClient: MessagingClient
         var alertMessageQueue = [AlertMessage]()
         var alertSendingDeadline: NIODeadline = NIODeadline.now()
+        var alertBatchJob: RepeatedTask?
 
         var el: EventLoop
     }

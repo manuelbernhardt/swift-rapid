@@ -12,7 +12,6 @@ class RapidMembershipService: MembershipService {
     private let provider: ActorRefProvider
     private let stateMachine: RapidStateMachine
     private let stateMachineRef: ActorRef<RapidStateMachine>
-    private let batchJob: RepeatedTask
 
     /// Initializer for a new cluster (this is the bootstrapping node)
     init(selfEndpoint: Endpoint, settings: Settings, view: MembershipView, failureDetectorProvider: EdgeFailureDetectorProvider,
@@ -35,20 +34,14 @@ class RapidMembershipService: MembershipService {
         self.stateMachine = stateMachine
         self.stateMachineRef = ref
         try stateMachine.start(ref: self.stateMachineRef)
-
-        // batch alerts
-        self.batchJob = el.scheduleRepeatedTask(initialDelay: settings.batchingWindow, delay: settings.batchingWindow) { _ in
-            ref.tell(.batchedAlertTick)
-        }
-
     }
 
     func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse> {
         stateMachineRef.ask(RapidStateMachine.RapidProtocol.rapidRequest(request))
     }
 
+    @discardableResult
     func shutdown() -> EventLoopFuture<()> {
-        batchJob.cancel()
         return self.stateMachine.shutdown()
     }
 
