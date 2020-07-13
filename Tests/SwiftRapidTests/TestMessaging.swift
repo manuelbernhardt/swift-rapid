@@ -113,5 +113,9 @@ class TestMembershipService: MembershipService {
     func getMetadata() throws -> [Endpoint: Metadata] {
         fatalError("getMetadata() has not been implemented")
     }
+
+    func shutdown() throws -> EventLoopFuture<()> {
+        return el.makeSucceededFuture(())
+    }
 }
 

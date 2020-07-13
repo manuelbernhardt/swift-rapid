@@ -1,8 +1,6 @@
-import ArgumentParser
 import Foundation
-#if os(Linux)
-import Glibc
-#endif
+import ArgumentParser
+import SwiftRapid
 
 struct Rapid: ParsableCommand {
     static let configuration = CommandConfiguration(

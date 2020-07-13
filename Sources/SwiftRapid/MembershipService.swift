@@ -1,7 +1,7 @@
 import Foundation
 import NIO
 
-protocol MembershipService {
+public protocol MembershipService {
 
     func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse>
 
@@ -9,6 +9,7 @@ protocol MembershipService {
 
     func getMetadata() throws -> [Endpoint: Metadata]
 
+    func shutdown() throws -> EventLoopFuture<()>
 }
 
 class RapidMembershipService: MembershipService {
@@ -55,7 +56,7 @@ class RapidMembershipService: MembershipService {
 
     @discardableResult
     func shutdown() -> EventLoopFuture<()> {
-        return self.stateMachine.shutdown()
+        self.stateMachine.shutdown()
     }
 
     deinit {

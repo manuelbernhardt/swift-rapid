@@ -2,7 +2,7 @@ import Foundation
 import NIO
 
 /// The client side of the pluggable messaging API
-protocol MessagingClient {
+public protocol MessagingClient {
 
     /// Sends a message to a remote node with redelivery semantics
     /// - Parameters:

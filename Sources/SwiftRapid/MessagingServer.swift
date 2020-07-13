@@ -1,7 +1,7 @@
 import Foundation
 
 /// The server side of the pluggable messaging API
-protocol MessagingServer {
+public protocol MessagingServer {
 
     /// Starts the messaging server
     func start() throws

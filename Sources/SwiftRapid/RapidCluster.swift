@@ -5,39 +5,53 @@ import Logging
 /// TODO documentation
 /// TODO leaving
 /// TODO listener for shutdown
-final class RapidCluster {
+final public class RapidCluster {
     private let membershipService: MembershipService
     private let messagingServer: MessagingServer
+    private let messagingClient: MessagingClient
+    private let serverGroup: MultiThreadedEventLoopGroup
+    private let clientGroup: MultiThreadedEventLoopGroup
     private let listenAddress: Endpoint
     private var hasShutdown = false
 
     private init(messagingServer: MessagingServer,
+                 messagingClient: MessagingClient,
                  membershipService: MembershipService,
-                 listenAddress: Endpoint) {
+                 listenAddress: Endpoint,
+                 serverGroup: MultiThreadedEventLoopGroup,
+                 clientGroup: MultiThreadedEventLoopGroup) {
         self.membershipService = membershipService
         self.messagingServer = messagingServer
+        self.messagingClient = messagingClient
+        self.clientGroup = clientGroup
+        self.serverGroup = serverGroup
         self.listenAddress = listenAddress
     }
 
-    func getMemberList() throws -> [Endpoint] {
+    public func getMemberList() throws -> [Endpoint] {
         try checkIfRunning()
         return try membershipService.getMemberList()
     }
 
-    func getClusterMetadata() throws -> [Endpoint: Metadata] {
+    public func getClusterMetadata() throws -> [Endpoint: Metadata] {
         try checkIfRunning()
         return try membershipService.getMetadata()
     }
 
-    func leaveGracefully() throws {
+    public func leaveGracefully() throws {
         fatalError("Not implemented")
     }
 
-    func shutdown() throws {
-        fatalError("Not implemented")
+    public func shutdown() throws {
+        try messagingClient.shutdown(el: serverGroup.next())
+        try messagingServer.shutdown()
+        try membershipService.shutdown().wait()
+        usleep(1000 * 100) // waiting seems to not be enough?
+        try serverGroup.syncShutdownGracefully()
+        try clientGroup.syncShutdownGracefully()
     }
 
-    struct Builder {
+    public struct Builder {
         private let logger = Logger(label: "rapid.RapidCluster")
 
         private let joinAttempts = 5
@@ -59,11 +73,11 @@ final class RapidCluster {
             return builder
         }
 
-        mutating func registerSubscription(callback: @escaping (ClusterEvent) -> ()) {
+        public mutating func registerSubscription(callback: @escaping (ClusterEvent) -> ()) {
             eventSubscriptions.append(callback)
         }
 
-        func start() throws -> RapidCluster {
+        public func start() throws -> RapidCluster {
             precondition(host != "", "host is not set")
             precondition(port != 0, "port is not set")
             let selfEndpoint = addressFromParts(host, port)
@@ -93,14 +107,17 @@ final class RapidCluster {
             messagingServer.onMembershipServiceInitialized(membershipService: membershipService)
             try messagingServer.start()
             logger.info("Successfully started Rapid cluster")
-            return RapidCluster(messagingServer: messagingServer, membershipService: membershipService, listenAddress: selfEndpoint)
+            return RapidCluster(messagingServer: messagingServer, messagingClient: messagingClient, membershipService: membershipService, listenAddress: selfEndpoint, serverGroup: serverGroup, clientGroup: clientGroup)
+        }
+        
+        public func join(host: String, port: Int) throws -> RapidCluster {
+            try join(seedEndpoint: addressFromParts(host, port))
         }
 
-        func join(host: String, port: Int) throws -> RapidCluster {
+        func join(seedEndpoint: Endpoint) throws -> RapidCluster {
             precondition(self.host != "", "host is not set")
             precondition(self.port != 0, "port is not set")
             let listenAddress = addressFromParts(self.host, self.port)
-            let seedAddress = addressFromParts(host, port)
             var currentIdentifier = nodeIdFromUUID(UUID())
             // TODO configurable
             let serverGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
@@ -112,7 +129,7 @@ final class RapidCluster {
             let actorRefProvider = ActorRefProvider()
             let edgeFailureDetectorProvider = self.edgeFailureDetectorProvider ?? AdaptiveAccrualFailureDetectorProvider(selfEndpoint: listenAddress, messagingClient: messagingClient, provider: actorRefProvider, el: clientGroup.next())
 
-            func joinAttempt(seedAddress: Endpoint, listenAddress: Endpoint, nodeId: NodeId, attempt: Int) throws -> RapidCluster {
+            func joinAttempt(seedEndpoint: Endpoint, listenAddress: Endpoint, nodeId: NodeId, attempt: Int) throws -> RapidCluster {
                 let joinRequest = RapidRequest.with {
                     $0.joinMessage = JoinMessage.with {
                         $0.sender = listenAddress
@@ -120,7 +137,7 @@ final class RapidCluster {
                         $0.metadata = metadata
                     }
                 }
-                let joinResponse = try messagingClient.sendMessage(recipient: seedAddress, msg: joinRequest).wait().joinResponse
+                let joinResponse = try messagingClient.sendMessage(recipient: seedEndpoint, msg: joinRequest).wait().joinResponse
                 if (joinResponse.statusCode != JoinStatusCode.safeToJoin) {
                     throw RapidClusterError.joinError(joinResponse)
                 }
@@ -149,12 +166,12 @@ final class RapidCluster {
                 messagingServer.onMembershipServiceInitialized(membershipService: membershipService)
                 try messagingServer.start()
                 logger.info("Successfully joined Rapid cluster with \(response.endpoints.count) members")
-                return RapidCluster(messagingServer: messagingServer, membershipService: membershipService, listenAddress: selfEndpoint)
+                return RapidCluster(messagingServer: messagingServer, messagingClient: messagingClient, membershipService: membershipService, listenAddress: selfEndpoint, serverGroup: serverGroup, clientGroup: clientGroup)
             }
 
             for attempt in 0..<joinAttempts {
                 do {
-                    return try joinAttempt(seedAddress: seedAddress, listenAddress: listenAddress, nodeId: currentIdentifier, attempt: attempt)
+                    return try joinAttempt(seedEndpoint: seedEndpoint, listenAddress: listenAddress, nodeId: currentIdentifier, attempt: attempt)
                 } catch RapidClusterError.joinError(let joinResponse) {
                     switch joinResponse.statusCode {
                         case .uuidAlreadyInRing:
@@ -197,18 +214,18 @@ final class RapidCluster {
     }
 
     /// ~~~ Events
-    enum ClusterEvent {
+    public enum ClusterEvent {
         case viewChangeProposal([Endpoint])
         case viewChange(ViewChange)
         case kicked
     }
 
-    struct ViewChange {
+    public struct ViewChange {
         let configurationId: UInt64
         let statusChanges: [NodeStatusChange]
     }
 
-    struct NodeStatusChange {
+    public struct NodeStatusChange {
         let node: Endpoint
         let status: EdgeStatus
         let metadata: Metadata

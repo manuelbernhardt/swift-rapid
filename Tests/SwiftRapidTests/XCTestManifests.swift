@@ -11,7 +11,8 @@ public func allTests() -> [XCTestCaseEntry] {
         testCase(GrpcMessagingServerTest.allTests),
         testCase(GrpcMessagingClientTest.allTests),
         testCase(AdaptiveAccrualFailureDetectorProviderTests.allTests),
-        testCase(MessagingTest.allTests)
+        testCase(MessagingTest.allTests),
+        testCase(ClusterTests.allTests)
     ]
 }
 #endif

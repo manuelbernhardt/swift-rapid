@@ -2,7 +2,7 @@ import Foundation
 import NIO
 
 /// Rapid settings
-struct Settings {
+public struct Settings {
 
     let K = 10
     let H = 9

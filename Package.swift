@@ -6,7 +6,8 @@ import PackageDescription
 let package = Package(
     name: "SwiftRapid",
     products: [
-        .executable(name: "SwiftRapid", targets: ["SwiftRapid"]),
+        .library(name: "SwiftRapid", targets: ["SwiftRapid"]),
+        .executable(name: "SwiftRapidCLI", targets: ["SwiftRapidCLI"]),
     ],
     dependencies: [
         .package(name: "SwiftProtobuf", url: "https://github.com/apple/swift-protobuf.git", from: "1.6.0"),
@@ -22,7 +23,12 @@ let package = Package(
         // Targets can depend on other targets in this package, and on products in packages which this package depends on.
         .target(
             name: "SwiftRapid",
-            dependencies: ["SwiftProtobuf", "xxHash-Swift", .product(name: "Logging", package: "swift-log"), .product(name: "Backtrace", package: "swift-backtrace"), .product(name: "NIO", package: "swift-nio"), .product(name: "GRPC", package: "grpc-swift"), .product(name: "ArgumentParser", package: "swift-argument-parser") ]),
+            dependencies: ["SwiftProtobuf", "xxHash-Swift", .product(name: "Logging", package: "swift-log"), .product(name: "Backtrace", package: "swift-backtrace"), .product(name: "NIO", package: "swift-nio"), .product(name: "GRPC", package: "grpc-swift"), .product(name: "ArgumentParser", package: "swift-argument-parser") ]
+        ),
+        .target(
+            name: "SwiftRapidCLI",
+            dependencies: ["SwiftRapid"]
+        ),
         .testTarget(
             name: "SwiftRapidTests",
             dependencies: ["SwiftRapid"]),
