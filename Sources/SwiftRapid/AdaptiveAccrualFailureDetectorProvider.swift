@@ -37,6 +37,7 @@ class AdaptiveAccrualFailureDetectorActor: Actor {
     private let signalFailure: (Endpoint) -> ()
     private let messagingClient: MessagingClient
     private let fd: AdaptiveAccrualFailureDetector
+    private var hasNotified = false
 
     private let probeRequest: RapidRequest
 
@@ -66,8 +67,9 @@ class AdaptiveAccrualFailureDetectorActor: Actor {
             self.this = ref
         case .tick:
             let now = currentTimeNanos()
-            if (!fd.isAvailable(at: now)) {
+            if (!fd.isAvailable(at: now) && !hasNotified) {
                 callback?(Result.success(signalFailure(subject)))
+                hasNotified = true
             } else {
                 let probeResponse = self.messagingClient
                     .sendMessageBestEffort(recipient: subject, msg: self.probeRequest)

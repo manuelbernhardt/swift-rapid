@@ -12,7 +12,9 @@ struct Settings {
 
     var consensusFallbackBaseDelay = TimeAmount.seconds(1)
 
-    var messagingClientRequestTimeout = TimeAmount.seconds(5)
+    var messagingClientDefaultRequestTimeout = TimeAmount.seconds(5)
+    var messagingClientJoinRequestTimeout = TimeAmount.seconds(10)
+    var messagingClientProbeRequestTimeout = TimeAmount.seconds(1)
 
     var batchingWindow = TimeAmount.milliseconds(300)
 }

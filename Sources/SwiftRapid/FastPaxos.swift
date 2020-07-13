@@ -1,5 +1,6 @@
 import Foundation
 import NIO
+import Logging
 
 /// Single-decree Fast Paxos: each node acts both as a proposer and an acceptor, therefore we only have one phase
 ///
@@ -10,6 +11,7 @@ import NIO
 ///
 /// TODO implement fall back to classic Paxos
 class FastPaxos {
+    private let logger = Logger(label: "rapid.FastPaxos")
 
     private let fallbackJitterRate: Double
     private let selfEndpoint: Endpoint
@@ -80,8 +82,7 @@ class FastPaxos {
     /// Accepts a proposal message from other nodes for a fast round
     func handleFastRoundProposal(proposalMessage: FastRoundPhase2bMessage) {
         if (proposalMessage.configurationID != configurationId) {
-            // TODO hey we need logging
-            print("Configuration ID mismatch for proposal, current configuration: \(configurationId) proposal: \(proposalMessage.configurationID)")
+            logger.warning("Configuration ID mismatch for proposal, current configuration: \(configurationId) proposal: \(proposalMessage.configurationID)")
             return
         }
 

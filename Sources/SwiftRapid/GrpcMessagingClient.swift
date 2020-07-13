@@ -2,7 +2,7 @@ import Foundation
 import NIO
 import GRPC
 
-///
+/// TODO retries
 /// TODO error handling for failing connections? / channels - remove them from the clients dict
 class GrpcMessagingClient: MessagingClient {
 
@@ -37,8 +37,7 @@ class GrpcMessagingClient: MessagingClient {
 
         let client: MembershipServiceClient = clients[recipient] ?? connect()
         // TODO retry after timeout
-        let timeout = settings.messagingClientRequestTimeout.nanoseconds / 1000000
-        return client.sendRequest(msg, callOptions: CallOptions(timeout: try! .milliseconds(Int(timeout)))).response
+        return client.sendRequest(msg, callOptions: CallOptions(timeout: timeoutForMessage(msg))).response
     }
 
     func shutdown(el: EventLoop) throws {
@@ -46,5 +45,19 @@ class GrpcMessagingClient: MessagingClient {
             client.channel.close()
         }
         try _ = EventLoopFuture.whenAllComplete(terminations, on: el).wait()
+    }
+
+    private func timeoutForMessage(_ msg: RapidRequest) -> GRPCTimeout {
+        func toGRPCTimeout(_ amount: TimeAmount) -> GRPCTimeout {
+            try! GRPCTimeout.milliseconds(Int(amount.nanoseconds / 1000000))
+        }
+        switch msg.content {
+            case .joinMessage:
+                return toGRPCTimeout(settings.messagingClientJoinRequestTimeout)
+            case .probeMessage:
+                return toGRPCTimeout(settings.messagingClientProbeRequestTimeout)
+            default:
+                return toGRPCTimeout(settings.messagingClientDefaultRequestTimeout)
+            }
     }
 }

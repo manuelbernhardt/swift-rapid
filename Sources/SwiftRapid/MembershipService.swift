@@ -7,6 +7,8 @@ protocol MembershipService {
 
     func getMemberList() throws -> [Endpoint]
 
+    func getMetadata() throws -> [Endpoint: Metadata]
+
 }
 
 class RapidMembershipService: MembershipService {
@@ -15,11 +17,11 @@ class RapidMembershipService: MembershipService {
     private let stateMachine: RapidStateMachine
     private let stateMachineRef: ActorRef<RapidStateMachine>
 
-    /// Initializer for a new cluster (this is the bootstrapping node)
+    /// Initializes the membership service
     init(selfEndpoint: Endpoint, settings: Settings, view: MembershipView, failureDetectorProvider: EdgeFailureDetectorProvider,
-         broadcaster: Broadcaster, messagingClient: MessagingClient, selfMetadata: Metadata,
+         broadcaster: Broadcaster, messagingClient: MessagingClient, allMetadata: [Endpoint: Metadata],
+         subscriptions: [(RapidCluster.ClusterEvent) -> ()],
          provider: ActorRefProvider, el: EventLoop) throws {
-
         self.provider = provider
 
         let stateMachine = try RapidStateMachine(
@@ -29,7 +31,8 @@ class RapidMembershipService: MembershipService {
                 failureDetectorProvider: failureDetectorProvider,
                 broadcaster: broadcaster,
                 messagingClient: messagingClient,
-                selfMetadata: selfMetadata,
+                allMetadata: allMetadata,
+                subscriptions: subscriptions,
                 el: el
         )
         let ref = provider.actorFor(stateMachine)
@@ -44,6 +47,10 @@ class RapidMembershipService: MembershipService {
 
     func getMemberList() throws -> [Endpoint] {
         try self.stateMachine.getMemberList()
+    }
+
+    func getMetadata() throws -> [Endpoint: Metadata] {
+        try self.stateMachine.getMetadata()
     }
 
     @discardableResult

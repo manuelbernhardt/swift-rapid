@@ -1,11 +1,14 @@
 import Foundation
 import NIO
 import Dispatch
+import Logging
 
 /// TODO
 /// - graceful leaving of this node
 /// - API and callbacks for membership change
 class RapidStateMachine: Actor {
+    private let logger = Logger(label: "rapid.RapidStateMachine")
+
     typealias MessageType = RapidProtocol
     typealias ResponseType = RapidResponse
 
@@ -24,6 +27,7 @@ class RapidStateMachine: Actor {
     enum RapidStateMachineError: Error {
         case messageInInvalidState(State)
         case viewChangeInProgress
+        case noStateAvailable
     }
 
     func receive(_ msg: MessageType, _ callback: ((Result<ResponseType, Error>) -> ())? = nil) {
@@ -46,9 +50,10 @@ class RapidStateMachine: Actor {
         }
     }
 
-    /// Initialize the Rapid state machine for an empty cluster (this is the bootstrapping node)
+    /// Initialize the Rapid state machine
     init(selfEndpoint: Endpoint, settings: Settings, view: MembershipView, failureDetectorProvider: EdgeFailureDetectorProvider,
-         broadcaster: Broadcaster, messagingClient: MessagingClient, selfMetadata: Metadata,
+         broadcaster: Broadcaster, messagingClient: MessagingClient, allMetadata: [Endpoint: Metadata],
+         subscriptions: [(RapidCluster.ClusterEvent) -> ()],
          el: EventLoop) throws {
 
         self.el = el
@@ -57,32 +62,14 @@ class RapidStateMachine: Actor {
             selfEndpoint: selfEndpoint,
                 settings: settings,
                 view: view,
-                metadata: [selfEndpoint: selfMetadata],
+                metadata: allMetadata,
                 failureDetectorProvider: failureDetectorProvider,
                 broadcaster: broadcaster,
                 messagingClient: messagingClient,
+                subscriptions: subscriptions,
                 el: el)
 
         self.state = .initial(commonState)
-    }
-
-    /// Initialize the Rapid state machine for an existing cluster that this node is joining
-    convenience init(selfEndpoint: Endpoint, settings: Settings, view: MembershipView, failureDetectorProvider: EdgeFailureDetectorProvider,
-         broadcaster: Broadcaster, messagingClient: MessagingClient, selfMetadata: Metadata,
-         nodeIds: [NodeId], endpoints: [Endpoint], metadata: [Endpoint: Metadata],
-         el: EventLoop) throws {
-
-        try self.init(selfEndpoint: selfEndpoint, settings: settings, view: view, failureDetectorProvider: failureDetectorProvider,
-                broadcaster: broadcaster, messagingClient: messagingClient, selfMetadata: selfMetadata, el: el)
-
-        switch state {
-            case .initial(var commonState):
-                commonState.view = MembershipView(K: settings.K, nodeIds: nodeIds, endpoints: endpoints)
-                commonState.metadata = metadata
-                self.state = .initial(commonState)
-            default:
-                fatalError("Should not be here")
-        }
     }
 
     /// Starts the state machine by switching to the active state
@@ -104,13 +91,21 @@ class RapidStateMachine: Actor {
     }
 
     func getMemberList() throws -> [Endpoint] {
+        try retrieveState { $0.view.getRing(k: 0).contents }
+    }
+
+    func getMetadata() throws -> [Endpoint: Metadata] {
+        try retrieveState { $0.metadata }
+    }
+
+    private func retrieveState<State>(_ retrieve: (CommonState) -> State) throws -> State {
         switch state {
-        case .initial, .leaving, .left:
-            return []
-        case .active(let activeState):
-            return activeState.common.view.getRing(k: 0).contents
-        case .viewChanging:
-            throw RapidStateMachineError.viewChangeInProgress
+            case .initial, .leaving, .left:
+                throw RapidStateMachineError.noStateAvailable
+            case .active(let activeState):
+                return retrieve(activeState.common)
+            case .viewChanging:
+                throw RapidStateMachineError.viewChangeInProgress
         }
     }
 
@@ -152,6 +147,8 @@ class RapidStateMachine: Actor {
     /// ~~~ states
 
     struct ActiveState: SubjectFailedHandler, ProbeMessageHandler, BatchedAlertMessageHandler, AlertBatcher {
+        private let logger = Logger(label: "rapid.RapidStateMachine")
+
         var common: CommonState
         // TODO be less of a troll with the naming
         var this: ActorRef<RapidStateMachine>
@@ -354,6 +351,9 @@ class RapidStateMachine: Actor {
             let seed = 0
             var sortedProposal = proposal
             sortedProposal.sort { $0.ringHash(seed: seed) < $1.ringHash(seed: seed) }
+            for callback in previousState.common.subscriptions {
+                callback(.viewChangeProposal(proposal))
+            }
             fastPaxos.propose(proposal: sortedProposal)
 
             // now directly handle with all the postponed consensus messages we have received while in the active state
@@ -439,12 +439,15 @@ class RapidStateMachine: Actor {
             }
 
             // add or remove nodes to / from the ring
+            var statusChanges = [RapidCluster.NodeStatusChange]()
+
             for node in proposal {
                 let isPresent = common.view.isHostPresent(node)
                 // if the node is already in the ring, remove it. Else, add it.
                 if (isPresent) {
                     try common.view.ringDelete(node: node)
-                    common.metadata[node] = nil
+                    let metadata = common.metadata.removeValue(forKey: node)
+                    statusChanges.append(RapidCluster.NodeStatusChange(node: node, status: .down, metadata: metadata ?? Metadata()))
                 } else {
                     guard let joinerNodeId = common.joinerNodeIds.removeValue(forKey: node) else {
                         // FIXME this will fail if the broadcasted alert about the JOIN and the consensus votes are not
@@ -457,12 +460,16 @@ class RapidStateMachine: Actor {
                         fatalError("Metadata of joining node unknown")
                     }
                     common.metadata[node] = joinerMetadata
+                    statusChanges.append(RapidCluster.NodeStatusChange(node: node, status: .up, metadata: joinerMetadata))
                 }
             }
 
             // respond to the nodes that joined through us
             respondToJoiners(proposal: proposal)
 
+            for callback in common.subscriptions {
+                callback(.viewChange(RapidCluster.ViewChange(configurationId: common.view.getCurrentConfigurationId(), statusChanges: statusChanges)))
+            }
         }
 
         func applyCutDetection(alerts: [AlertMessage]) -> [Endpoint] {
@@ -487,7 +494,6 @@ class RapidStateMachine: Actor {
                 joinerCallback?(Result.success(response))
             }
             common.joiners = []
-
         }
     }
 
@@ -511,6 +517,8 @@ class RapidStateMachine: Actor {
         var alertMessageQueue = [AlertMessage]()
         var alertSendingDeadline: NIODeadline = NIODeadline.now()
         var alertBatchJob: RepeatedTask?
+
+        var subscriptions: [(RapidCluster.ClusterEvent) -> ()]
 
         var el: EventLoop
     }

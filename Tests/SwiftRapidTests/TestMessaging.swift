@@ -107,7 +107,11 @@ class TestMembershipService: MembershipService {
     }
 
     func getMemberList() throws -> [Endpoint] {
-        return []
+        fatalError("getMemberList() has not been implemented")
+    }
+
+    func getMetadata() throws -> [Endpoint: Metadata] {
+        fatalError("getMetadata() has not been implemented")
     }
 }
 

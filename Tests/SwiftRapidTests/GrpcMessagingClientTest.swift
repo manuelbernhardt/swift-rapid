@@ -37,7 +37,7 @@ class GrpcMessagingClientTest: XCTestCase, TestClientMessaging, TestServerMessag
 
     func testTimingOutClientCall() throws {
         let address = addressFromParts("localhost", 8000)
-        clientSettings.messagingClientRequestTimeout = TimeAmount.milliseconds(100)
+        clientSettings.messagingClientDefaultRequestTimeout = TimeAmount.milliseconds(100)
         withTestServer(address, { server in
             withClient { client in
                 let request = RapidRequest()

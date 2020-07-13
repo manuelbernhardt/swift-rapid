@@ -168,7 +168,9 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
         let broadcaster = UnicastToAllBroadcaster(client: client)
         let failureDetectorProvider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: serverAddress, messagingClient: client, provider: provider, el: serverGroup!.next())
         let membershipService = try RapidMembershipService(selfEndpoint: serverAddress, settings: settings, view: view, failureDetectorProvider: failureDetectorProvider,
-                broadcaster: broadcaster, messagingClient: client, selfMetadata: Metadata(), provider: provider, el: serverGroup!.next())
+                broadcaster: broadcaster, messagingClient: client, allMetadata: [serverAddress: Metadata()],
+                subscriptions: [],
+                provider: provider, el: serverGroup!.next())
         server.onMembershipServiceInitialized(membershipService: membershipService)
         try server.start()
         return membershipService
