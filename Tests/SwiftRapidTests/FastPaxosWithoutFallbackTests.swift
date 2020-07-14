@@ -178,19 +178,17 @@ class FastPaxosWithoutFallbackTests: XCTestCase {
 
 class TestBroadcaster: Broadcaster {
 
-    private let ev: EventLoop
+    private let el: EventLoop
 
     init(eventLoop: EventLoop) {
-        self.ev = eventLoop
+        self.el = eventLoop
     }
 
     var didBroadcast: Bool = false
 
-    func broadcast(request: RapidRequest) -> [EventLoopFuture<RapidResponse>] {
+    func broadcast(request: RapidRequest) -> EventLoopFuture<[Result<RapidResponse, Error>]> {
         didBroadcast = true
-        return [ev.submit { () -> RapidResponse in
-            RapidResponse()
-        }]
+        return el.makeSucceededFuture([Result.success(RapidResponse())])
     }
 
     func setMembership(recipients: [Endpoint]) {

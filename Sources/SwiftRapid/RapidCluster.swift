@@ -30,12 +30,12 @@ final public class RapidCluster {
 
     public func getMemberList() throws -> [Endpoint] {
         try checkIfRunning()
-        return try membershipService.getMemberList()
+        return try membershipService.getMemberList().wait()
     }
 
     public func getClusterMetadata() throws -> [Endpoint: Metadata] {
         try checkIfRunning()
-        return try membershipService.getMetadata()
+        return try membershipService.getMetadata().wait()
     }
 
     public func leaveGracefully() throws {
@@ -86,7 +86,7 @@ final public class RapidCluster {
             let clientGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
             let messagingServer: MessagingServer = self.messagingServer ?? GrpcMessagingServer(address: selfEndpoint, group: serverGroup)
             let messagingClient: MessagingClient = self.messagingClient ?? GrpcMessagingClient(group: clientGroup, settings: settings)
-            let broadcaster = UnicastToAllBroadcaster(client: messagingClient)
+            let broadcaster = UnicastToAllBroadcaster(client: messagingClient, el: clientGroup.next())
             let currentIdentifier = nodeIdFromUUID(UUID())
             // TODO should also be assigned a group and be the one to hand out event loops
             let actorRefProvider = ActorRefProvider()
@@ -124,7 +124,7 @@ final public class RapidCluster {
             let clientGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
             let messagingServer: MessagingServer = self.messagingServer ?? GrpcMessagingServer(address: listenAddress, group: serverGroup)
             let messagingClient: MessagingClient = self.messagingClient ?? GrpcMessagingClient(group: clientGroup, settings: settings)
-            let broadcaster = UnicastToAllBroadcaster(client: messagingClient)
+            let broadcaster = UnicastToAllBroadcaster(client: messagingClient, el: clientGroup.next())
             // TODO should also be assigned a group and be the one to hand out event loops
             let actorRefProvider = ActorRefProvider()
             let edgeFailureDetectorProvider = self.edgeFailureDetectorProvider ?? AdaptiveAccrualFailureDetectorProvider(selfEndpoint: listenAddress, messagingClient: messagingClient, provider: actorRefProvider, el: clientGroup.next())

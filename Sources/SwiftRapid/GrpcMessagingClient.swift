@@ -1,5 +1,6 @@
 import Foundation
 import NIO
+import NIOConcurrencyHelpers
 import GRPC
 
 /// TODO retries
@@ -9,6 +10,7 @@ class GrpcMessagingClient: MessagingClient {
     private let settings: Settings
     internal let group: MultiThreadedEventLoopGroup
 
+    private let clientLock = Lock()
     private var clients = [Endpoint: MembershipServiceClient]()
 
     init(group: MultiThreadedEventLoopGroup, settings: Settings) {
@@ -35,8 +37,11 @@ class GrpcMessagingClient: MessagingClient {
             return client
         }
 
-        let client: MembershipServiceClient = clients[recipient] ?? connect()
-        // TODO retry after timeout
+        let client: MembershipServiceClient = clientLock.withLock {
+            clients[recipient] ?? connect()
+        }
+
+        // TODO retry
         return client.sendRequest(msg, callOptions: CallOptions(timeout: timeoutForMessage(msg))).response
     }
 

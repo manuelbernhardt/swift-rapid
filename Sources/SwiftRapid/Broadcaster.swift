@@ -5,23 +5,25 @@ import NIO
 protocol Broadcaster {
 
     @discardableResult
-    func broadcast(request: RapidRequest) -> [EventLoopFuture<RapidResponse>]
+    func broadcast(request: RapidRequest) -> EventLoopFuture<[Result<RapidResponse, Error>]>
 
     func setMembership(recipients: [Endpoint])
 }
 
 class UnicastToAllBroadcaster: Broadcaster {
+    private let el: EventLoop
     private let client: MessagingClient
     private var recipients = [Endpoint]()
 
-    init(client: MessagingClient) {
+    init(client: MessagingClient, el: EventLoop) {
+        self.el = el
         self.client = client
     }
 
-    func broadcast(request: RapidRequest) -> [EventLoopFuture<RapidResponse>] {
-        recipients.map { recipient in
+    func broadcast(request: RapidRequest) -> EventLoopFuture<[Result<RapidResponse, Error>]> {
+        EventLoopFuture.whenAllComplete(recipients.map { recipient in
             client.sendMessageBestEffort(recipient: recipient, msg: request)
-        }
+        }, on: el)
     }
 
     func setMembership(recipients: [Endpoint]) {

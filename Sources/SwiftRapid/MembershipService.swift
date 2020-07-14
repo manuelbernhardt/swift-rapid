@@ -5,9 +5,9 @@ public protocol MembershipService {
 
     func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse>
 
-    func getMemberList() throws -> [Endpoint]
+    func getMemberList() throws -> EventLoopFuture<[Endpoint]>
 
-    func getMetadata() throws -> [Endpoint: Metadata]
+    func getMetadata() throws -> EventLoopFuture<[Endpoint: Metadata]>
 
     func shutdown() throws -> EventLoopFuture<()>
 }
@@ -43,15 +43,36 @@ class RapidMembershipService: MembershipService {
     }
 
     func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse> {
-        stateMachineRef.ask(RapidStateMachine.RapidProtocol.rapidRequest(request))
+        stateMachineRef.ask(RapidStateMachine.RapidCommand.rapidRequest(request)).map { result in
+            switch result {
+            case .rapidResponse(let response):
+                return response
+            default:
+                fatalError("Should not be here")
+            }
+        }
     }
 
-    func getMemberList() throws -> [Endpoint] {
-        try self.stateMachine.getMemberList()
+    func getMemberList() -> EventLoopFuture<[Endpoint]> {
+        stateMachineRef.ask(RapidStateMachine.RapidCommand.retrieveMemberList).map { result in
+            switch result {
+            case .memberList(let list):
+                return list
+            default:
+                return []
+            }
+        }
     }
 
-    func getMetadata() throws -> [Endpoint: Metadata] {
-        try self.stateMachine.getMetadata()
+    func getMetadata() throws -> EventLoopFuture<[Endpoint: Metadata]> {
+        stateMachineRef.ask(RapidStateMachine.RapidCommand.retrieveMetadata).map { result in
+            switch result {
+            case .metadata(let metadata):
+                return metadata
+            default:
+                return [:]
+            }
+        }
     }
 
     @discardableResult

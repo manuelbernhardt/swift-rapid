@@ -106,11 +106,11 @@ class TestMembershipService: MembershipService {
         return el.makeSucceededFuture(response)
     }
 
-    func getMemberList() throws -> [Endpoint] {
+    func getMemberList() throws -> EventLoopFuture<[Endpoint]> {
         fatalError("getMemberList() has not been implemented")
     }
 
-    func getMetadata() throws -> [Endpoint: Metadata] {
+    func getMetadata() throws -> EventLoopFuture<[Endpoint: Metadata]> {
         fatalError("getMetadata() has not been implemented")
     }
 

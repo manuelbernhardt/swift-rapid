@@ -85,7 +85,7 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
                 XCTAssertEqual(2, response.endpoints.count)
                 // don't try to check things against the initial view we have provided as the view is not thread-safe and the latest modifications are very likely
                 // not visible on the current thread
-                XCTAssertEqual(response.endpoints, try! service.getMemberList())
+                XCTAssertEqual(response.endpoints, try! service.getMemberList().wait())
 
                 try! service.shutdown().wait()
 
@@ -165,7 +165,7 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
         if (initialView == nil) {
             try view.ringAdd(node: serverAddress, nodeId: nodeId)
         }
-        let broadcaster = UnicastToAllBroadcaster(client: client)
+        let broadcaster = UnicastToAllBroadcaster(client: client, el: clientGroup!.next())
         let failureDetectorProvider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: serverAddress, messagingClient: client, provider: provider, el: serverGroup!.next())
         let membershipService = try RapidMembershipService(selfEndpoint: serverAddress, settings: settings, view: view, failureDetectorProvider: failureDetectorProvider,
                 broadcaster: broadcaster, messagingClient: client, allMetadata: [serverAddress: Metadata()],

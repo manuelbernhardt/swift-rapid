@@ -30,7 +30,7 @@ final class MembershipView {
         self.K = K
         self.allNodes = Set()
         self.seenIdentifiers = Set()
-        self.currentConfiguration = Configuration(nodeIds: seenIdentifiers, endpoints: [])
+        self.currentConfiguration = Configuration(nodeIds: seenIdentifiers, endpoints: [], knownConfigurations: [])
         let range = 0..<K
         for k in range {
             rings.append(SortableSet<Endpoint>(seed: k))
@@ -223,7 +223,7 @@ final class MembershipView {
     }
 
     private func updateCurrentConfiguration() {
-        currentConfiguration = Configuration(nodeIds: seenIdentifiers, endpoints: rings[0].contents)
+        currentConfiguration = Configuration(nodeIds: seenIdentifiers, endpoints: rings[0].contents, knownConfigurations: currentConfiguration.knownConfigurations)
     }
 
 }
@@ -232,8 +232,9 @@ struct Configuration {
     let nodeIds: Set<NodeId>
     let endpoints: [Endpoint]
     let configurationId: UInt64
+    let knownConfigurations: [UInt64]
 
-    init(nodeIds: Set<NodeId>, endpoints: [Endpoint]) {
+    init(nodeIds: Set<NodeId>, endpoints: [Endpoint], knownConfigurations: [UInt64]) {
         self.nodeIds = nodeIds
         self.endpoints = endpoints
 
@@ -248,6 +249,8 @@ struct Configuration {
             hash = hash &+ numericCast(XXH64.digest(byteArray(from: endpoint.port)))
         }
         self.configurationId = hash
+
+        self.knownConfigurations = knownConfigurations + [hash]
     }
 
 }

@@ -53,7 +53,7 @@ class FastPaxos {
     /// - Parameters:
     ///   - proposal: the membership change proposal consisting of all the nodes that have been added / removed
     ///               in comparison to the previous configuration
-    func propose(proposal: [Endpoint]) {
+    func propose(proposal: [Endpoint]) -> EventLoopFuture<()> {
         return propose(proposal: proposal, fallbackDelay: randomFallbackDelay())
     }
 
@@ -63,7 +63,7 @@ class FastPaxos {
     ///   - proposal: the membership change proposal consisting of all the nodes that have been added / removed
     ///               in comparison to the previous configuration
     ///   - fallbackDelayInMs: the delay before falling back to classic paxos
-    func propose(proposal: [Endpoint], fallbackDelay: TimeAmount) {
+    func propose(proposal: [Endpoint], fallbackDelay: TimeAmount) -> EventLoopFuture<()> {
         // TODO inform classic paxos we're running a fast round when implementing paxos
 
         let consensusMessage = FastRoundPhase2bMessage.with {
@@ -74,7 +74,10 @@ class FastPaxos {
         let proposalMessage = RapidRequest.with {
             $0.fastRoundPhase2BMessage = consensusMessage
         }
-        broadcaster.broadcast(request: proposalMessage)
+
+        return broadcaster.broadcast(request: proposalMessage).map { _ in
+            ()
+        }
 
         // TODO schedule classic round after fallback delay
     }
@@ -109,6 +112,7 @@ class FastPaxos {
 
         if (receivedVotes.count >= membershipSize - F) {
             if (count >= membershipSize - F) {
+                logger.debug("Proposal of size \(proposalMessage.endpoints.count)")
                 wrappedDecisionCallback(proposalMessage.endpoints)
             }
         }

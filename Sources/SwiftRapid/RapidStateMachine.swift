@@ -6,11 +6,12 @@ import Logging
 /// TODO
 /// - graceful leaving of this node
 /// - API and callbacks for membership change
+/// - implement missing cut detection recovery if fast path fails (timeout on unstable reports / implicit detection)
 class RapidStateMachine: Actor {
     private let logger = Logger(label: "rapid.RapidStateMachine")
 
-    typealias MessageType = RapidProtocol
-    typealias ResponseType = RapidResponse
+    typealias MessageType = RapidCommand
+    typealias ResponseType = RapidResult
 
     internal let el: EventLoop
 
@@ -90,25 +91,6 @@ class RapidStateMachine: Actor {
         }
     }
 
-    func getMemberList() throws -> [Endpoint] {
-        try retrieveState { $0.view.getRing(k: 0).contents }
-    }
-
-    func getMetadata() throws -> [Endpoint: Metadata] {
-        try retrieveState { $0.metadata }
-    }
-
-    private func retrieveState<State>(_ retrieve: (CommonState) -> State) throws -> State {
-        switch state {
-            case .initial, .leaving, .left:
-                throw RapidStateMachineError.noStateAvailable
-            case .active(let activeState):
-                return retrieve(activeState.common)
-            case .viewChanging:
-                throw RapidStateMachineError.viewChangeInProgress
-        }
-    }
-
     @discardableResult
     func shutdown() -> EventLoopFuture<Void> {
         func cancelFailureDetectors(failureDetectors: [RepeatedTask]) -> EventLoopFuture<Void> {
@@ -137,16 +119,25 @@ class RapidStateMachine: Actor {
 
     /// ~~~ protocol
 
-    enum RapidProtocol {
+    enum RapidCommand {
         case rapidRequest(RapidRequest)
         case subjectFailed(Endpoint)
+        case proposalBroadcasted
         case viewChangeDecided([Endpoint])
         case batchedAlertTick
+        case retrieveMemberList
+        case retrieveMetadata
+    }
+
+    enum RapidResult {
+        case rapidResponse(RapidResponse)
+        case memberList([Endpoint])
+        case metadata([Endpoint: Metadata])
     }
 
     /// ~~~ states
 
-    struct ActiveState: SubjectFailedHandler, ProbeMessageHandler, BatchedAlertMessageHandler, AlertBatcher {
+    struct ActiveState: SubjectFailedHandler, ProbeMessageHandler, BatchedAlertMessageHandler, AlertBatcher, StateQueryHandler {
         private let logger = Logger(label: "rapid.RapidStateMachine")
 
         var common: CommonState
@@ -185,6 +176,9 @@ class RapidStateMachine: Actor {
         }
 
         mutating func handleMessage(_ msg: MessageType, _ callback: ((Result<ResponseType, Error>) -> ())? = nil) throws -> State {
+            func respond(_ rapidResponse: RapidResponse) {
+                callback?(Result.success(RapidResult.rapidResponse(rapidResponse)))
+            }
             switch(msg) {
                 case .rapidRequest(let request):
                     switch request.content {
@@ -196,29 +190,29 @@ class RapidStateMachine: Actor {
                                 let rapidResponse = RapidResponse.with {
                                     $0.joinResponse = response
                                 }
-                                callback?(Result.success(rapidResponse))
+                                respond(rapidResponse)
                             }
                             return .active(self)
                         case .batchedAlertMessage(let batchedAlertMessage):
                             let proposal = handleBatchedAlert(msg: batchedAlertMessage)
                             if (proposal.isEmpty) {
-                                callback?(Result.success(RapidResponse()))
+                                respond(RapidResponse())
                                 return .active(self)
                             } else {
-                                callback?(Result.success(RapidResponse()))
+                                respond(RapidResponse())
                                 return try .viewChanging(ViewChangingState(self, proposal: proposal))
                             }
                         case .probeMessage(let probe):
                             let response = handleProbe(msg: probe)
-                            callback?(Result.success(response))
+                            respond(response)
                             return .active(self)
                         case .fastRoundPhase2BMessage, .phase1AMessage, .phase1BMessage, .phase2AMessage, .phase2BMessage:
                             let response = try handleConsensus(msg: request)
-                            callback?(Result.success(response))
+                            respond(response)
                             return .active(self)
                         case .leaveMessage(let leave):
                             let response = try handleLeave(msg: leave)
-                            callback?(Result.success(response))
+                            respond(response)
                             return .active(self)
                         case .none:
                             return .active(self)
@@ -231,6 +225,14 @@ class RapidStateMachine: Actor {
                     return .active(self)
                 case .viewChangeDecided:
                     fatalError("How on earth are we here?")
+                case .proposalBroadcasted:
+                    return .active(self)
+                case .retrieveMemberList:
+                    callback?(Result.success(RapidResult.memberList(getMemberList())))
+                    return .active(self)
+                case .retrieveMetadata:
+                    callback?(Result.success(RapidResult.metadata(getMetadata())))
+                    return .active(self)
             }
         }
 
@@ -317,7 +319,7 @@ class RapidStateMachine: Actor {
 
     }
 
-    struct ViewChangingState: SubjectFailedHandler, ProbeMessageHandler, BatchedAlertMessageHandler, AlertBatcher {
+    struct ViewChangingState: SubjectFailedHandler, ProbeMessageHandler, BatchedAlertMessageHandler, AlertBatcher, StateQueryHandler {
         var common: CommonState
         // TODO be less of a troll with the naming
         var this: ActorRef<RapidStateMachine>
@@ -354,15 +356,20 @@ class RapidStateMachine: Actor {
             for callback in previousState.common.subscriptions {
                 callback(.viewChangeProposal(proposal))
             }
-            fastPaxos.propose(proposal: sortedProposal)
-
             // now directly handle with all the postponed consensus messages we have received while in the active state
             for consensusMessage in previousState.postponedConsensusMessages {
                 let _ = try handleConsensus(msg: consensusMessage)
             }
+
+            fastPaxos.propose(proposal: sortedProposal).map { _ in
+                previousState.this.tell(.proposalBroadcasted)
+            }
         }
 
-        mutating func handleMessage(_ msg: RapidProtocol, _ callback: ((Result<ResponseType, Error>) -> ())? = nil) throws -> State {
+        mutating func handleMessage(_ msg: RapidCommand, _ callback: ((Result<ResponseType, Error>) -> ())? = nil) throws -> State {
+            func respond(_ rapidResponse: RapidResponse) {
+                callback?(Result.success(RapidResult.rapidResponse(rapidResponse)))
+            }
             switch(msg) {
             case .rapidRequest(let request):
                 switch request.content {
@@ -373,26 +380,26 @@ class RapidStateMachine: Actor {
                             $0.statusCode = JoinStatusCode.viewChangeInProgress
                         }
                     }
-                    callback?(Result.success(response))
+                    respond(response)
                     return .viewChanging(self)
                 case .batchedAlertMessage(let batchedAlertMessage):
                     // we don't care about any resulting proposal here as we do not perform cut detection anyway
                     // however, we need to handle the alerts for joining nodes for which we store UUIDs and metadata
                     let _ = handleBatchedAlert(msg: batchedAlertMessage)
-                    callback?(Result.success(RapidResponse()))
+                    respond(RapidResponse())
                     return .viewChanging(self)
                 case .probeMessage(let probe):
                     let response = handleProbe(msg: probe)
-                    callback?(Result.success(response))
+                    respond(response)
                     return .viewChanging(self)
                 case .fastRoundPhase2BMessage, .phase1AMessage, .phase1BMessage, .phase2AMessage, .phase2BMessage:
                     let response = try handleConsensus(msg: request)
-                    callback?(Result.success(response))
+                    respond(response)
                     return .viewChanging(self)
                 case .leaveMessage:
                     stashedMessages.append(request)
                     // reply immediately, leave is a best-effort operation anyway
-                    callback?(Result.success(RapidResponse()))
+                    respond(RapidResponse())
                     return .viewChanging(self)
                 case .none:
                     return .viewChanging(self)
@@ -407,6 +414,9 @@ class RapidStateMachine: Actor {
                 // with according to the virtual synchrony model
                 try handleSubjectFailed(subject)
                 return .viewChanging(self)
+            case .proposalBroadcasted:
+                // all good
+                return .viewChanging(self)
             case .viewChangeDecided(let proposal):
                 try handleViewChangeDecided(proposal: proposal)
                 // unstash all and return to active state
@@ -417,12 +427,21 @@ class RapidStateMachine: Actor {
             case .batchedAlertTick:
                 sendAlertBatch()
                 return .viewChanging(self)
+            case .retrieveMemberList:
+                callback?(Result.success(RapidResult.memberList(getMemberList())))
+                return .viewChanging(self)
+            case .retrieveMetadata:
+                callback?(Result.success(RapidResult.metadata(getMetadata())))
+                return .viewChanging(self)
             }
         }
 
         private func handleConsensus(msg: RapidRequest) throws -> RapidResponse {
             switch(msg.content) {
                 case .fastRoundPhase2BMessage:
+                    if (!common.view.getCurrentConfiguration().knownConfigurations.contains(msg.fastRoundPhase2BMessage.configurationID)) {
+                        print("**************************************** Received early! proposal")
+                    }
                     fastPaxos.handleFastRoundProposal(proposalMessage: msg.fastRoundPhase2BMessage)
                     return RapidResponse()
             case .phase1AMessage, .phase1BMessage, .phase2AMessage, .phase2BMessage:
@@ -491,7 +510,7 @@ class RapidStateMachine: Actor {
                 }
             }
             for joinerCallback in common.joiners {
-                joinerCallback?(Result.success(response))
+                joinerCallback?(Result.success(RapidResult.rapidResponse(response)))
             }
             common.joiners = []
         }
@@ -575,6 +594,9 @@ extension BatchedAlertMessageHandler {
                 // when the node is added to the rings
                 .map { extractJoinerNodeIdAndMetadata($0) }
 
+        // stash those alerts that we shouldn't have seen yet
+        // this happens when a part of the group is lagging behind the rest
+
         return applyCutDetection(alerts: validAlerts)
     }
 
@@ -635,4 +657,16 @@ extension AlertBatcher {
         }
     }
 
+}
+
+protocol StateQueryHandler {
+    var common: RapidStateMachine.CommonState { get }
+}
+extension StateQueryHandler {
+    func getMemberList() -> [Endpoint] {
+        common.view.getRing(k: 0).contents
+    }
+    func getMetadata() -> [Endpoint: Metadata] {
+        common.metadata
+    }
 }

@@ -71,18 +71,17 @@ class AdaptiveAccrualFailureDetectorActor: Actor {
                 callback?(Result.success(signalFailure(subject)))
                 hasNotified = true
             } else {
-                let probeResponse = self.messagingClient
+                let _ = self.messagingClient
                     .sendMessageBestEffort(recipient: subject, msg: self.probeRequest)
-
-                probeResponse.whenSuccess { response in
-                    switch(response.content) {
-                    case .probeResponse:
-                        // TODO handle probe status / fail after too many probes in initializing state
-                        self.this?.tell(.heartbeat)
-                    default:
-                        return
+                    .map { response in
+                        switch(response.content) {
+                        case .probeResponse:
+                            // TODO handle probe status / fail after too many probes in initializing state
+                            self.this?.tell(.heartbeat)
+                        default:
+                            return
+                        }
                     }
-                }
                 callback?(Result.success(()))
             }
         case .heartbeat:
