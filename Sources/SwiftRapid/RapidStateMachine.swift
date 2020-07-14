@@ -361,7 +361,7 @@ class RapidStateMachine: Actor {
                 let _ = try handleConsensus(msg: consensusMessage)
             }
 
-            fastPaxos.propose(proposal: sortedProposal).map { _ in
+            let _ = fastPaxos.propose(proposal: sortedProposal).map { _ in
                 previousState.this.tell(.proposalBroadcasted)
             }
         }
@@ -440,6 +440,7 @@ class RapidStateMachine: Actor {
             switch(msg.content) {
                 case .fastRoundPhase2BMessage:
                     if (!common.view.getCurrentConfiguration().knownConfigurations.contains(msg.fastRoundPhase2BMessage.configurationID)) {
+                        // TODO turn into log
                         print("**************************************** Received early! proposal")
                     }
                     fastPaxos.handleFastRoundProposal(proposalMessage: msg.fastRoundPhase2BMessage)
@@ -604,8 +605,11 @@ extension BatchedAlertMessageHandler {
         let destination = alert.edgeDst
         let currentConfigurationID = common.view.getCurrentConfigurationId()
         if (currentConfigurationID != alert.configurationID) {
-            // TODO use logging (TRACE)
-            print("AlertMessage for configuration \(alert.configurationID) received during configuration \(currentConfigurationID)")
+            if (!common.view.getCurrentConfiguration().knownConfigurations.contains(alert.configurationID)) {
+                // TODO in this scenario we should be stashing the alert and evaluate it in the next switch
+                // TODO use logging (TRACE)
+                print("AlertMessage for unknown configuration \(alert.configurationID) received during configuration \(currentConfigurationID)")
+            }
             return false
         }
 

@@ -109,7 +109,7 @@ final public class RapidCluster {
             logger.info("Successfully started Rapid cluster")
             return RapidCluster(messagingServer: messagingServer, messagingClient: messagingClient, membershipService: membershipService, listenAddress: selfEndpoint, serverGroup: serverGroup, clientGroup: clientGroup)
         }
-        
+
         public func join(host: String, port: Int) throws -> RapidCluster {
             try join(seedEndpoint: addressFromParts(host, port))
         }
@@ -174,18 +174,18 @@ final public class RapidCluster {
                     return try joinAttempt(seedEndpoint: seedEndpoint, listenAddress: listenAddress, nodeId: currentIdentifier, attempt: attempt)
                 } catch RapidClusterError.joinError(let joinResponse) {
                     switch joinResponse.statusCode {
-                        case .uuidAlreadyInRing:
-                            logger.error("Node with the same UUID already present. Retrying.")
-                            currentIdentifier = nodeIdFromUUID(UUID())
-                            break
-                        case .hostnameAlreadyInRing:
-                            logger.error("Membership rejected, retrying.")
-                            break
-                        case .viewChangeInProgress:
-                            logger.error("Seed node is executing a view change, retrying.")
-                            break
-                        default:
-                            throw RapidClusterError.unknownJoinError
+                    case .uuidAlreadyInRing:
+                        logger.error("Node with the same UUID already present. Retrying.")
+                        currentIdentifier = nodeIdFromUUID(UUID())
+                        break
+                    case .hostnameAlreadyInRing:
+                        logger.error("Membership rejected, retrying.")
+                        break
+                    case .viewChangeInProgress:
+                        logger.error("Seed node is executing a view change, retrying.")
+                        break
+                    default:
+                        throw RapidClusterError.unknownJoinError
                     }
                 }
             }
@@ -200,12 +200,12 @@ final public class RapidCluster {
     }
 
 
-
     private func checkIfRunning() throws {
         if (hasShutdown) {
             throw RapidClusterError.clusterAlreadyShutdown
         }
     }
+
     enum RapidClusterError: Error {
         case clusterAlreadyShutdown
         case joinError(JoinResponse)

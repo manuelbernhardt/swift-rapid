@@ -5,6 +5,7 @@ import Dispatch
 import Foundation
 @testable import SwiftRapid
 import Backtrace
+import Logging
 
 class ClusterTests: XCTestCase {
 
@@ -14,6 +15,15 @@ class ClusterTests: XCTestCase {
     let portCounter = NIOAtomic.makeAtomic(value: 1235)
 
     var settings = Settings()
+
+    override class func setUp() {
+        super.setUp()
+        LoggingSystem.bootstrap { label in
+            var logHandler = StreamLogHandler.standardOutput(label: label)
+            logHandler.logLevel = .notice
+            return logHandler
+        }
+    }
 
     override func setUp() {
         Backtrace.install()
@@ -47,6 +57,20 @@ class ClusterTests: XCTestCase {
             waitAndVerifyAgreement(expectedSize: i + 2, maxTries: 5, interval: 1.0)
         }
     }
+
+    // TODO we fail here because we're basically too slow -- profile the implementation
+    func testTwentyNodesJoinSequentially() throws {
+        let numNodes = 20
+        let seedEndpoint = addressFromParts("127.0.0.1", basePort)
+        try createCluster(numNodes: 1, seedEndpoint: seedEndpoint)
+        verifyCluster(expectedSize: 1)
+        for i in 0..<numNodes {
+            try extendCluster(numNodes: 1, seed: seedEndpoint)
+            waitAndVerifyAgreement(expectedSize: i + 2, maxTries: 5, interval: 1.0)
+        }
+    }
+
+
 
     func createCluster(numNodes: Int, seedEndpoint: Endpoint) throws {
         let seedNode: RapidCluster = try buildCluster(endpoint: seedEndpoint).start()
@@ -113,6 +137,7 @@ class ClusterTests: XCTestCase {
     static var allTests = [
         ("testSingleNodeJoinsThroughSeed", testSingleNodeJoinsThroughSeed),
         ("testTenNodesJoinSequentially", testTenNodesJoinSequentially),
+        ("testTwentyNodesJoinSequentially", testTwentyNodesJoinSequentially),
 
     ]
 

@@ -85,7 +85,7 @@ class FastPaxos {
     /// Accepts a proposal message from other nodes for a fast round
     func handleFastRoundProposal(proposalMessage: FastRoundPhase2bMessage) {
         if (proposalMessage.configurationID != configurationId) {
-            logger.warning("Configuration ID mismatch for proposal, current configuration: \(configurationId) proposal: \(proposalMessage.configurationID)")
+            logger.trace("Configuration ID mismatch for proposal, current configuration: \(configurationId) proposal: \(proposalMessage.configurationID)")
             return
         }
 
