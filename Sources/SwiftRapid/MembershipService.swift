@@ -1,5 +1,6 @@
 import Foundation
 import NIO
+import NIOConcurrencyHelpers
 
 public protocol MembershipService {
 
@@ -9,46 +10,54 @@ public protocol MembershipService {
 
     func getMetadata() throws -> EventLoopFuture<[Endpoint: Metadata]>
 
-    func shutdown() throws -> EventLoopFuture<()>
+    func shutdown(el: EventLoop) -> EventLoopFuture<Void>
 }
 
 class RapidMembershipService: MembershipService {
 
     private let provider: ActorRefProvider
-    private let stateMachine: RapidStateMachine
     private let stateMachineRef: ActorRef<RapidStateMachine>
+    private let el: EventLoop
+    private let isShutdown = NIOAtomic.makeAtomic(value: false)
 
     /// Initializes the membership service
     init(selfEndpoint: Endpoint, settings: Settings, view: MembershipView, failureDetectorProvider: EdgeFailureDetectorProvider,
          broadcaster: Broadcaster, messagingClient: MessagingClient, allMetadata: [Endpoint: Metadata],
          subscriptions: [(RapidCluster.ClusterEvent) -> ()],
          provider: ActorRefProvider, el: EventLoop) throws {
-        self.provider = provider
 
-        let stateMachine = try RapidStateMachine(
-                selfEndpoint: selfEndpoint,
-                settings: settings,
-                view: view,
-                failureDetectorProvider: failureDetectorProvider,
-                broadcaster: broadcaster,
-                messagingClient: messagingClient,
-                allMetadata: allMetadata,
-                subscriptions: subscriptions,
-                el: el
-        )
-        let ref = provider.actorFor(stateMachine)
-        self.stateMachine = stateMachine
+        self.provider = provider
+        self.el = el
+
+        let ref = try provider.actorFor { el in
+            try RapidStateMachine(
+                    selfEndpoint: selfEndpoint,
+                    settings: settings,
+                    view: view,
+                    failureDetectorProvider: failureDetectorProvider,
+                    broadcaster: broadcaster,
+                    messagingClient: messagingClient,
+                    allMetadata: allMetadata,
+                    subscriptions: subscriptions,
+                    el: el
+            )
+        }
         self.stateMachineRef = ref
-        try stateMachine.start(ref: self.stateMachineRef)
+        try self.stateMachineRef.start()
     }
 
     func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse> {
-        stateMachineRef.ask(RapidStateMachine.RapidCommand.rapidRequest(request)).map { result in
-            switch result {
-            case .rapidResponse(let response):
-                return response
-            default:
-                fatalError("Should not be here")
+        if (isShutdown.load()) {
+            // TODO think this over
+            return el.makeSucceededFuture(RapidResponse())
+        } else {
+            return stateMachineRef.ask(RapidStateMachine.RapidCommand.rapidRequest(request)).map { result in
+                switch result {
+                case .rapidResponse(let response):
+                    return response
+                default:
+                    fatalError("Should not be here")
+                }
             }
         }
     }
@@ -75,12 +84,8 @@ class RapidMembershipService: MembershipService {
         }
     }
 
-    @discardableResult
-    func shutdown() -> EventLoopFuture<()> {
-        self.stateMachine.shutdown()
-    }
-
-    deinit {
-        shutdown()
+    func shutdown(el: EventLoop) -> EventLoopFuture<Void> {
+        self.isShutdown.store(true)
+        return try stateMachineRef.stop(el: el)
     }
 }

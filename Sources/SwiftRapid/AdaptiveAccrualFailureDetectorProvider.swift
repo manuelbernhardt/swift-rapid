@@ -18,8 +18,10 @@ class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
     }
 
     func createInstance(subject: Endpoint, signalFailure: @escaping (Endpoint) -> ()) throws -> () -> EventLoopFuture<()> {
-        let failureDetectorRef = provider.actorFor(try AdaptiveAccrualFailureDetectorActor(subject: subject, selfEndpoint: selfEndpoint, signalFailure: signalFailure, messagingClient: messagingClient, el: el))
-        failureDetectorRef.tell(.initialize(failureDetectorRef))
+        let failureDetectorRef = try provider.actorFor { el in
+            try AdaptiveAccrualFailureDetectorActor(subject: subject, selfEndpoint: selfEndpoint, signalFailure: signalFailure, messagingClient: messagingClient, el: el)
+        }
+        try failureDetectorRef.start()
         return {
             failureDetectorRef.ask(AdaptiveAccrualFailureDetectorActor.FailureDetectorProtocol.tick)
         }
@@ -27,7 +29,7 @@ class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
 
 }
 
-class AdaptiveAccrualFailureDetectorActor: Actor {
+final class AdaptiveAccrualFailureDetectorActor: Actor {
     typealias MessageType = FailureDetectorProtocol
     typealias ResponseType = Void // TODO Nothing type???
 
@@ -58,13 +60,19 @@ class AdaptiveAccrualFailureDetectorActor: Actor {
                 $0.sender = selfEndpoint
             })
         }
+    }
 
+    func start(ref: ActorRef<AdaptiveAccrualFailureDetectorActor>) throws {
+        self.this = ref
+    }
+
+    func stop(el: EventLoop) -> EventLoopFuture<Void> {
+        // not much we have to do here
+        el.makeSucceededFuture(())
     }
 
     func receive(_ msg: MessageType, _ callback: ((Result<ResponseType, Error>) -> ())?) {
         switch(msg) {
-        case .initialize(let ref):
-            self.this = ref
         case .tick:
             let now = currentTimeNanos()
             if (!fd.isAvailable(at: now) && !hasNotified) {
@@ -91,7 +99,6 @@ class AdaptiveAccrualFailureDetectorActor: Actor {
 
 
     enum FailureDetectorProtocol {
-        case initialize(ActorRef<AdaptiveAccrualFailureDetectorActor>)
         case tick
         case heartbeat
     }

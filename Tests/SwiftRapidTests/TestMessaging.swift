@@ -26,7 +26,7 @@ extension TestServerMessaging {
 
 extension TestClientMessaging {
     func withTestClient<T>(_ body: (MessagingClient) -> T, delay: TimeAmount = TimeAmount.nanoseconds(0)) -> T {
-        var testClient = TestGrpcMessagingClient(group: clientGroup!, settings: clientSettings)
+        let testClient = TestGrpcMessagingClient(group: clientGroup!, settings: clientSettings)
         testClient.delayBestEffortMessages(for: delay)
         defer {
             if let group = clientGroup {
@@ -114,8 +114,8 @@ class TestMembershipService: MembershipService {
         fatalError("getMetadata() has not been implemented")
     }
 
-    func shutdown() throws -> EventLoopFuture<()> {
-        return el.makeSucceededFuture(())
+    func shutdown(el: EventLoop) -> EventLoopFuture<Void> {
+        el.makeSucceededFuture(())
     }
 }
 

@@ -7,7 +7,7 @@ import Logging
 /// - graceful leaving of this node
 /// - API and callbacks for membership change
 /// - implement missing cut detection recovery if fast path fails (timeout on unstable reports / implicit detection)
-class RapidStateMachine: Actor {
+final class RapidStateMachine: Actor {
     private let logger = Logger(label: "rapid.RapidStateMachine")
 
     typealias MessageType = RapidCommand
@@ -74,7 +74,6 @@ class RapidStateMachine: Actor {
     }
 
     /// Starts the state machine by switching to the active state
-    /// TODO: it would be nicer not to have to provide the reference here. maybe there's a way
     func start(ref: ActorRef<RapidStateMachine>) throws {
         switch state {
            case .initial(let commonState):
@@ -92,7 +91,7 @@ class RapidStateMachine: Actor {
     }
 
     @discardableResult
-    func shutdown() -> EventLoopFuture<Void> {
+    func stop(el: EventLoop) -> EventLoopFuture<Void> {
         func cancelFailureDetectors(failureDetectors: [RepeatedTask]) -> EventLoopFuture<Void> {
             let cancellationFutures: [EventLoopFuture<Void>] = failureDetectors.map { fd in
                 let promise: EventLoopPromise<Void> = el.makePromise()
@@ -111,10 +110,6 @@ class RapidStateMachine: Actor {
             default:
                 return el.makeSucceededFuture(())
         }
-    }
-
-    deinit {
-        shutdown()
     }
 
     /// ~~~ protocol

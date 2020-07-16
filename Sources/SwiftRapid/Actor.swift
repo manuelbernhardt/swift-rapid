@@ -26,6 +26,15 @@ protocol Actor {
     ///   - callback: an optional callback passed by the caller to be invoked once processing is done.
     ///               Can be used both as a way to execute side-effecting code or to return a response
     mutating func receive(_ msg: MessageType, _ callback: ((Result<ResponseType, Error>) ->())?)
+
+    /// Perform any startup tasks here, including storing the ActorRef if needed
+    ///
+    /// - Parameter ref: the ActorRef of this actor
+    /// TODO it would be nice if we didn't have to do this explicitly, but I don't see how.
+    func start(ref: ActorRef<Self>) throws
+
+    /// Perform any shutdown tasks here
+    func stop(el: EventLoop) -> EventLoopFuture<Void>
 }
 
 class ActorRef<A: Actor> {
@@ -61,13 +70,31 @@ class ActorRef<A: Actor> {
             self.actor.receive(msg, callback)
         }
         return promise.futureResult
-
     }
+
+    /// Starts the actor
+    func start() throws {
+        try actor.start(ref: self)
+    }
+
+    /// Stops the actor
+    func stop(el: EventLoop) -> EventLoopFuture<Void> {
+        self.actor.stop(el: el)
+    }
+
 
 }
 
 class ActorRefProvider {
-    func actorFor<A>(_ actor: A) -> ActorRef<A> where A: Actor {
-        ActorRef(for: actor)
+    private let group: MultiThreadedEventLoopGroup
+
+    init(group: MultiThreadedEventLoopGroup) {
+        self.group = group
     }
+
+    // TODO try to make this into a builder
+    func actorFor<A>(_ creator: (EventLoop) throws -> A) rethrows -> ActorRef<A> where A: Actor {
+        ActorRef(for: try creator(group.next()))
+    }
+
 }
