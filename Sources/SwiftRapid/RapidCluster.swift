@@ -9,9 +9,7 @@ final public class RapidCluster {
     private let membershipService: MembershipService
     private let messagingServer: MessagingServer
     private let messagingClient: MessagingClient
-    private let serverGroup: MultiThreadedEventLoopGroup
-    private let clientGroup: MultiThreadedEventLoopGroup
-    private let actorGroup: MultiThreadedEventLoopGroup
+    private let eventLoopGroup: MultiThreadedEventLoopGroup
     private let listenAddress: Endpoint
     private var hasShutdown = false
 
@@ -19,15 +17,11 @@ final public class RapidCluster {
                  messagingClient: MessagingClient,
                  membershipService: MembershipService,
                  listenAddress: Endpoint,
-                 serverGroup: MultiThreadedEventLoopGroup,
-                 clientGroup: MultiThreadedEventLoopGroup,
-                 actorGroup: MultiThreadedEventLoopGroup) {
+                 eventLoopGroup: MultiThreadedEventLoopGroup) {
         self.membershipService = membershipService
         self.messagingServer = messagingServer
         self.messagingClient = messagingClient
-        self.clientGroup = clientGroup
-        self.serverGroup = serverGroup
-        self.actorGroup = actorGroup
+        self.eventLoopGroup = eventLoopGroup
         self.listenAddress = listenAddress
     }
 
@@ -46,13 +40,11 @@ final public class RapidCluster {
     }
 
     public func shutdown() throws {
-        let shutdownLoop = serverGroup.next()
+        let shutdownLoop = eventLoopGroup.next()
         try membershipService.shutdown(el: shutdownLoop).wait()
         try messagingClient.shutdown(el: shutdownLoop)
         try messagingServer.shutdown()
-        try actorGroup.syncShutdownGracefully()
-        try clientGroup.syncShutdownGracefully()
-        try serverGroup.syncShutdownGracefully()
+        try eventLoopGroup.syncShutdownGracefully()
     }
 
     public struct Builder {
@@ -86,16 +78,14 @@ final public class RapidCluster {
             precondition(port != 0, "port is not set")
             let selfEndpoint = addressFromParts(host, port)
             // TODO configurable
-            let serverGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
-            let clientGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
-            let actorGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
-            let messagingServer: MessagingServer = self.messagingServer ?? GrpcMessagingServer(address: selfEndpoint, group: serverGroup)
-            let messagingClient: MessagingClient = self.messagingClient ?? GrpcMessagingClient(group: clientGroup, settings: settings)
-            let broadcaster = UnicastToAllBroadcaster(client: messagingClient, el: clientGroup.next())
+            let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
+            let messagingServer: MessagingServer = self.messagingServer ?? GrpcMessagingServer(address: selfEndpoint, group: eventLoopGroup)
+            let messagingClient: MessagingClient = self.messagingClient ?? GrpcMessagingClient(group: eventLoopGroup, settings: settings)
+            let broadcaster = UnicastToAllBroadcaster(client: messagingClient, el: eventLoopGroup.next())
             let currentIdentifier = nodeIdFromUUID(UUID())
             // TODO should also be assigned a group and be the one to hand out event loops
-            let actorRefProvider = ActorRefProvider(group: actorGroup)
-            let edgeFailureDetectorProvider = self.edgeFailureDetectorProvider ?? AdaptiveAccrualFailureDetectorProvider(selfEndpoint: selfEndpoint, messagingClient: messagingClient, provider: actorRefProvider, el: clientGroup.next())
+            let actorRefProvider = ActorRefProvider(group: eventLoopGroup)
+            let edgeFailureDetectorProvider = self.edgeFailureDetectorProvider ?? AdaptiveAccrualFailureDetectorProvider(selfEndpoint: selfEndpoint, messagingClient: messagingClient, provider: actorRefProvider, el: eventLoopGroup.next())
             let membershipView = MembershipView(K: self.settings.K, nodeIds: [currentIdentifier], endpoints: [selfEndpoint])
             let membershipService = try RapidMembershipService(
                     selfEndpoint: selfEndpoint,
@@ -107,7 +97,7 @@ final public class RapidCluster {
                     allMetadata: [selfEndpoint: metadata],
                     subscriptions: eventSubscriptions,
                     provider: actorRefProvider,
-                    el: actorGroup.next()
+                    el: eventLoopGroup.next()
             )
             messagingServer.onMembershipServiceInitialized(membershipService: membershipService)
             try messagingServer.start()
@@ -117,9 +107,7 @@ final public class RapidCluster {
                     messagingClient: messagingClient,
                     membershipService: membershipService,
                     listenAddress: selfEndpoint,
-                    serverGroup: serverGroup,
-                    clientGroup: clientGroup,
-                    actorGroup: actorGroup)
+                    eventLoopGroup: eventLoopGroup)
         }
 
         public func join(host: String, port: Int) throws -> RapidCluster {
@@ -132,15 +120,13 @@ final public class RapidCluster {
             let listenAddress = addressFromParts(self.host, self.port)
             var currentIdentifier = nodeIdFromUUID(UUID())
             // TODO configurable
-            let serverGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
-            let clientGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
-            let actorGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
-            let messagingServer: MessagingServer = self.messagingServer ?? GrpcMessagingServer(address: listenAddress, group: serverGroup)
-            let messagingClient: MessagingClient = self.messagingClient ?? GrpcMessagingClient(group: clientGroup, settings: settings)
-            let broadcaster = UnicastToAllBroadcaster(client: messagingClient, el: clientGroup.next())
+            let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
+            let messagingServer: MessagingServer = self.messagingServer ?? GrpcMessagingServer(address: listenAddress, group: eventLoopGroup)
+            let messagingClient: MessagingClient = self.messagingClient ?? GrpcMessagingClient(group: eventLoopGroup, settings: settings)
+            let broadcaster = UnicastToAllBroadcaster(client: messagingClient, el: eventLoopGroup.next())
             // TODO should also be assigned a group and be the one to hand out event loops
-            let actorRefProvider = ActorRefProvider(group: actorGroup)
-            let edgeFailureDetectorProvider = self.edgeFailureDetectorProvider ?? AdaptiveAccrualFailureDetectorProvider(selfEndpoint: listenAddress, messagingClient: messagingClient, provider: actorRefProvider, el: clientGroup.next())
+            let actorRefProvider = ActorRefProvider(group: eventLoopGroup)
+            let edgeFailureDetectorProvider = self.edgeFailureDetectorProvider ?? AdaptiveAccrualFailureDetectorProvider(selfEndpoint: listenAddress, messagingClient: messagingClient, provider: actorRefProvider, el: eventLoopGroup.next())
 
             func joinAttempt(seedEndpoint: Endpoint, listenAddress: Endpoint, nodeId: NodeId, attempt: Int) throws -> RapidCluster {
                 let joinRequest = RapidRequest.with {
@@ -174,7 +160,7 @@ final public class RapidCluster {
                         allMetadata: [selfEndpoint: metadata],
                         subscriptions: eventSubscriptions,
                         provider: actorRefProvider,
-                        el: actorGroup.next()
+                        el: eventLoopGroup.next()
                 )
                 messagingServer.onMembershipServiceInitialized(membershipService: membershipService)
                 try messagingServer.start()
@@ -184,9 +170,7 @@ final public class RapidCluster {
                         messagingClient: messagingClient,
                         membershipService: membershipService,
                         listenAddress: selfEndpoint,
-                        serverGroup: serverGroup,
-                        clientGroup: clientGroup,
-                        actorGroup: actorGroup
+                        eventLoopGroup: eventLoopGroup
                 )
             }
 
@@ -210,10 +194,10 @@ final public class RapidCluster {
                     }
                 }
             }
-            try messagingClient.shutdown(el: serverGroup.next())
+            try messagingClient.shutdown(el: eventLoopGroup.next())
             try messagingServer.shutdown()
-            try serverGroup.syncShutdownGracefully()
-            try clientGroup.syncShutdownGracefully()
+            try eventLoopGroup.syncShutdownGracefully()
+            try eventLoopGroup.syncShutdownGracefully()
             throw RapidClusterError.joinFailed
         }
 

@@ -4,3 +4,4 @@
 /*.xcodeproj
 .idea
 Package.resolved
+perf.data

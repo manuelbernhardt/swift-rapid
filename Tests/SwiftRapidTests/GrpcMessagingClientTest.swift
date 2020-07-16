@@ -8,19 +8,16 @@ import GRPC
 
 class GrpcMessagingClientTest: XCTestCase, TestClientMessaging, TestServerMessaging {
 
-    var serverGroup: MultiThreadedEventLoopGroup? = nil
-    var clientGroup: MultiThreadedEventLoopGroup? = nil
+    var eventLoopGroup: MultiThreadedEventLoopGroup? = nil
     var clientSettings: Settings = Settings()
 
     override func setUp() {
-        serverGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        clientGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
         clientSettings = Settings()
     }
 
     override func tearDown() {
-        try! clientGroup?.syncShutdownGracefully()
-        try! serverGroup?.syncShutdownGracefully()
+        try! eventLoopGroup?.syncShutdownGracefully()
     }
 
     func testSuccessfulClientCall() throws {
@@ -55,9 +52,9 @@ class GrpcMessagingClientTest: XCTestCase, TestClientMessaging, TestServerMessag
     }
 
     private func withClient<T>(_ body: (MessagingClient) -> T) -> T {
-        let client = GrpcMessagingClient(group: clientGroup!, settings: clientSettings)
+        let client = GrpcMessagingClient(group: eventLoopGroup!, settings: clientSettings)
         defer {
-            try! client.shutdown(el: clientGroup!.next())
+            try! client.shutdown(el: eventLoopGroup!.next())
         }
         return body(client)
     }

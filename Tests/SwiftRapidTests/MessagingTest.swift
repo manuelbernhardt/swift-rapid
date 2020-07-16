@@ -6,24 +6,21 @@ import Dispatch
 
 class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
 
-    var clientGroup: MultiThreadedEventLoopGroup? = nil
-    var serverGroup: MultiThreadedEventLoopGroup? = nil
+    var eventLoopGroup: MultiThreadedEventLoopGroup? = nil
     var clientSettings = Settings()
 
     var settings = Settings()
     var provider: ActorRefProvider? = nil
 
     override func setUp() {
-        serverGroup = MultiThreadedEventLoopGroup(numberOfThreads: 2)
-        clientGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        provider = ActorRefProvider(group: MultiThreadedEventLoopGroup(numberOfThreads: 2))
+        eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
+        provider = ActorRefProvider(group: eventLoopGroup!)
         clientSettings = Settings()
         settings = Settings()
     }
 
     override func tearDown() {
-        try! serverGroup?.syncShutdownGracefully()
-        try! clientGroup?.syncShutdownGracefully()
+        try! eventLoopGroup?.syncShutdownGracefully()
     }
 
     func testJoinFirstNode() throws {
@@ -37,7 +34,7 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
                 XCTAssertEqual(JoinStatusCode.safeToJoin, response.statusCode)
                 XCTAssertEqual(2, response.endpoints.count)
 
-               try! service.shutdown(el: clientGroup!.next()).wait()
+               try! service.shutdown(el: eventLoopGroup!.next()).wait()
             }, disableTestMembershipService: true)
         }
     }
@@ -63,7 +60,7 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
                 XCTAssertEqual(0, joinResponse2.endpoints.count)
                 XCTAssertEqual(0, joinResponse2.identifiers.count)
 
-                try! service.shutdown(el: clientGroup!.next()).wait()
+                try! service.shutdown(el: eventLoopGroup!.next()).wait()
             })
         }
     }
@@ -88,7 +85,7 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
                 // not visible on the current thread
                 XCTAssertEqual(response.endpoints, try! service.getMemberList().wait())
 
-                try! service.shutdown(el: clientGroup!.next()).wait()
+                try! service.shutdown(el: eventLoopGroup!.next()).wait()
             })
         }
     }
@@ -115,7 +112,7 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
                 let probeResponse: RapidResponse = try! client.sendMessage(recipient: nodeAddress, msg: probe).wait()
                 XCTAssertEqual(NodeStatus.ok, probeResponse.probeResponse.status)
 
-                try! service.shutdown(el: clientGroup!.next()).wait()
+                try! service.shutdown(el: eventLoopGroup!.next()).wait()
             })
         }
     }
@@ -143,7 +140,7 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
                     let probe2Response = try! client.sendMessage(recipient: node2Address, msg: probe).wait().probeResponse
                     XCTAssertEqual(NodeStatus.bootstrapping, probe2Response.status)
 
-                    try! service.shutdown(el: clientGroup!.next()).wait()
+                    try! service.shutdown(el: eventLoopGroup!.next()).wait()
                 }
             })
         })
@@ -165,12 +162,12 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
         if (initialView == nil) {
             try view.ringAdd(node: serverAddress, nodeId: nodeId)
         }
-        let broadcaster = UnicastToAllBroadcaster(client: client, el: clientGroup!.next())
-        let failureDetectorProvider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: serverAddress, messagingClient: client, provider: provider!, el: serverGroup!.next())
+        let broadcaster = UnicastToAllBroadcaster(client: client, el: eventLoopGroup!.next())
+        let failureDetectorProvider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: serverAddress, messagingClient: client, provider: provider!, el: eventLoopGroup!.next())
         let membershipService = try RapidMembershipService(selfEndpoint: serverAddress, settings: settings, view: view, failureDetectorProvider: failureDetectorProvider,
                 broadcaster: broadcaster, messagingClient: client, allMetadata: [serverAddress: Metadata()],
                 subscriptions: [],
-                provider: provider!, el: serverGroup!.next())
+                provider: provider!, el: eventLoopGroup!.next())
         server.onMembershipServiceInitialized(membershipService: membershipService)
         try server.start()
         return membershipService

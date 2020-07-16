@@ -62,13 +62,13 @@ final class RapidStateMachine: Actor {
         let commonState = CommonState(
             selfEndpoint: selfEndpoint,
                 settings: settings,
+                el: el,
                 view: view,
                 metadata: allMetadata,
                 failureDetectorProvider: failureDetectorProvider,
                 broadcaster: broadcaster,
                 messagingClient: messagingClient,
-                subscriptions: subscriptions,
-                el: el)
+                subscriptions: subscriptions)
 
         self.state = .initial(commonState)
     }
@@ -414,6 +414,14 @@ final class RapidStateMachine: Actor {
                 return .viewChanging(self)
             case .viewChangeDecided(let proposal):
                 try handleViewChangeDecided(proposal: proposal)
+                // create a synthetic batchedAlertMessage from all the postponed ones
+                let batch = RapidRequest.with {
+                    $0.batchedAlertMessage = BatchedAlertMessage.with {
+                        $0.messages = common.postponedAlertMessages
+                    }
+                }
+                common.postponedAlertMessages = []
+                self.this.tell(.rapidRequest(batch))
                 // unstash all and return to active state
                 for msg in stashedMessages {
                     self.this.tell(.rapidRequest(msg))
@@ -515,6 +523,7 @@ final class RapidStateMachine: Actor {
     struct CommonState {
         var selfEndpoint: Endpoint
         var settings: Settings
+        var el: EventLoop
 
         // ~~~ membership protocol
         var view: MembershipView
@@ -535,7 +544,10 @@ final class RapidStateMachine: Actor {
 
         var subscriptions: [(RapidCluster.ClusterEvent) -> ()]
 
-        var el: EventLoop
+        // ~~~ postponed alert messages
+        // these are alert messages for a yet unknown configuration if the node is lagging behind the rest
+        var postponedAlertMessages = [AlertMessage]()
+
     }
 
 }
@@ -592,6 +604,11 @@ extension BatchedAlertMessageHandler {
 
         // stash those alerts that we shouldn't have seen yet
         // this happens when a part of the group is lagging behind the rest
+        let postponedAlerts = msg.messages.filter { alert in
+            !common.view.getCurrentConfiguration().knownConfigurations.contains(alert.configurationID)
+        }
+
+        common.postponedAlertMessages.append(contentsOf: postponedAlerts)
 
         return applyCutDetection(alerts: validAlerts)
     }
@@ -603,7 +620,7 @@ extension BatchedAlertMessageHandler {
             if (!common.view.getCurrentConfiguration().knownConfigurations.contains(alert.configurationID)) {
                 // TODO in this scenario we should be stashing the alert and evaluate it in the next switch
                 // TODO use logging (TRACE)
-                print("AlertMessage for unknown configuration \(alert.configurationID) received during configuration \(currentConfigurationID)")
+                print("Stashing AlertMessage for unknown configuration \(alert.configurationID) received during configuration \(currentConfigurationID)")
             }
             return false
         }
@@ -644,7 +661,7 @@ extension AlertBatcher {
     }
 
     mutating func sendAlertBatch() {
-        if (common.alertSendingDeadline.isOverdue()) {
+        if (common.alertSendingDeadline.isOverdue() && !common.alertMessageQueue.isEmpty) {
             let batchedAlertRequest = RapidRequest.with {
                 $0.batchedAlertMessage = BatchedAlertMessage.with {
                     $0.sender = common.selfEndpoint

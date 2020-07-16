@@ -5,17 +5,17 @@ import Dispatch
 @testable import SwiftRapid
 
 protocol TestServerMessaging {
-    var serverGroup: MultiThreadedEventLoopGroup? { get }
+    var eventLoopGroup: MultiThreadedEventLoopGroup? { get }
 }
 
 protocol TestClientMessaging {
-    var clientGroup: MultiThreadedEventLoopGroup? { get }
+    var eventLoopGroup: MultiThreadedEventLoopGroup? { get }
     var clientSettings: Settings { get }
 }
 
 extension TestServerMessaging {
     func withTestServer<T>(_ address: Endpoint, _ body: (TestMessagingServer) -> T, disableTestMembershipService: Bool = false) -> T {
-        let server = TestMessagingServer(address: address, group: serverGroup!, disableTestMembershipService: disableTestMembershipService)
+        let server = TestMessagingServer(address: address, group: eventLoopGroup!, disableTestMembershipService: disableTestMembershipService)
         try! server.start()
         defer {
             try! server.shutdown()
@@ -26,10 +26,10 @@ extension TestServerMessaging {
 
 extension TestClientMessaging {
     func withTestClient<T>(_ body: (MessagingClient) -> T, delay: TimeAmount = TimeAmount.nanoseconds(0)) -> T {
-        let testClient = TestGrpcMessagingClient(group: clientGroup!, settings: clientSettings)
+        let testClient = TestGrpcMessagingClient(group: eventLoopGroup!, settings: clientSettings)
         testClient.delayBestEffortMessages(for: delay)
         defer {
-            if let group = clientGroup {
+            if let group = eventLoopGroup {
                 try! testClient.shutdown(el: group.next())
             }
         }
@@ -41,19 +41,19 @@ extension TestClientMessaging {
 
 class TestMessagingServer: GrpcMessagingServer {
 
-    private let group: MultiThreadedEventLoopGroup
+    private let eventLoopGroup: MultiThreadedEventLoopGroup
     private var requests: [RapidRequest] = []
     private let lock: Lock = Lock()
 
     var responseDelayInSeconds: UInt32 = 0
 
     init(address: Endpoint, group: MultiThreadedEventLoopGroup, disableTestMembershipService: Bool) {
-        self.group = group
+        self.eventLoopGroup = group
         super.init(address: address, group: group)
     }
 
     override init(address: Endpoint, group: MultiThreadedEventLoopGroup) {
-        self.group = group
+        self.eventLoopGroup = group
         super.init(address: address, group: group)
         let testMembershipService = TestMembershipService(el: group.next())
         onMembershipServiceInitialized(membershipService: testMembershipService)

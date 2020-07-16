@@ -4,16 +4,16 @@ import NIO
 
 class GrpcMessagingServerTest: XCTestCase, TestClientMessaging {
 
-    var clientGroup: MultiThreadedEventLoopGroup? = nil
+    var eventLoopGroup: MultiThreadedEventLoopGroup? = nil
     var clientSettings: Settings = Settings()
 
     override func setUp() {
-        clientGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         clientSettings = Settings()
     }
 
     override func tearDown() {
-        try! clientGroup?.syncShutdownGracefully()
+        try! eventLoopGroup?.syncShutdownGracefully()
     }
 
     func testHandleMessageWithoutMembershipService() throws {
@@ -30,7 +30,7 @@ class GrpcMessagingServerTest: XCTestCase, TestClientMessaging {
     func testHandleMessageWithMembershipService() throws {
 
         let address = addressFromParts("localhost", 8000)
-        let testService = TestMembershipService(el: clientGroup!.next())
+        let testService = TestMembershipService(el: eventLoopGroup!.next())
         withServer(address, { server in
             withTestClient { testClient in
                 server.onMembershipServiceInitialized(membershipService: testService)
@@ -42,7 +42,7 @@ class GrpcMessagingServerTest: XCTestCase, TestClientMessaging {
     }
 
     private func withServer<T>(_ address: Endpoint, _ body: (MessagingServer) -> T) -> T {
-        let server = GrpcMessagingServer(address: address, group: clientGroup!)
+        let server = GrpcMessagingServer(address: address, group: eventLoopGroup!)
         try! server.start()
         defer {
             try! server.shutdown()
