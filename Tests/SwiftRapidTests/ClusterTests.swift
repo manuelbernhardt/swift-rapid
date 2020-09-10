@@ -16,6 +16,8 @@ class ClusterTests: XCTestCase {
 
     var settings = Settings()
 
+    var addMetadata = true
+
     override class func setUp() {
         super.setUp()
         LoggingSystem.bootstrap { label in
@@ -58,7 +60,6 @@ class ClusterTests: XCTestCase {
         }
     }
 
-    // TODO we fail here because we're basically too slow -- profile the implementation
     func testTwentyNodesJoinSequentially() throws {
         let numNodes = 20
         let seedEndpoint = addressFromParts("127.0.0.1", basePort)
@@ -70,7 +71,16 @@ class ClusterTests: XCTestCase {
         }
     }
 
+    func testFiftyNodesJoinInParallel() throws {
+        addMetadata = false
+        let numNodes = 50
+        let seedEndpoint = addressFromParts("127.0.0.1", basePort)
+        try createCluster(numNodes: numNodes, seedEndpoint: seedEndpoint)
+        waitAndVerifyAgreement(expectedSize: numNodes, maxTries: 5, interval: 1.0)
+        verifyCluster(expectedSize: numNodes)
+        verifyMetadata(expectedSize: numNodes)
 
+    }
 
     func createCluster(numNodes: Int, seedEndpoint: Endpoint) throws {
         let seedNode: RapidCluster = try buildCluster(endpoint: seedEndpoint).start()
@@ -82,16 +92,34 @@ class ClusterTests: XCTestCase {
     }
 
     func extendCluster(numNodes: Int, seed: Endpoint) throws {
-        // TODO make async - need a countdownlatch
-        let joiningEndpoint = addressFromParts("127.0.0.1", portCounter.add(1))
-        let joiningNode = try buildCluster(endpoint: joiningEndpoint).join(seedEndpoint: seed)
-        instances.put(key: joiningEndpoint, value: joiningNode)
+        let dispatchQueue: DispatchQueue = DispatchQueue(label: String(describing: "test.cluster.extender"), attributes: .concurrent)
+        let counter = NIOAtomic.makeAtomic(value: numNodes)
+        for _ in 0..<numNodes {
+            dispatchQueue.async {
+                let joiningEndpoint = addressFromParts("127.0.0.1", self.portCounter.add(1))
+                let joiningNode = try! self
+                        .buildCluster(endpoint: joiningEndpoint)
+                        .join(seedEndpoint: seed)
+                self.instances.put(key: joiningEndpoint, value: joiningNode)
+                counter.sub(1)
+                print("One more node")
+            }
+        }
+        while(counter.load() > 0) {
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+
     }
 
     func buildCluster(endpoint: Endpoint) -> RapidCluster.Builder {
         RapidCluster.Builder.with {
             $0.host = String(decoding: endpoint.hostname, as: UTF8.self)
             $0.port = Int(endpoint.port)
+            if (addMetadata) {
+                $0.metadata = Metadata.with {
+                    $0.metadata = ["Key": endpoint.textFormatString().data(using: .utf8)!]
+                }
+            }
         }
     }
 
@@ -106,6 +134,12 @@ class ClusterTests: XCTestCase {
             }
         } catch {
             XCTFail()
+        }
+    }
+
+    func verifyMetadata(expectedSize: Int) {
+        for instance in instances.values() {
+            XCTAssertEqual(try! instance.getClusterMetadata().count, expectedSize)
         }
     }
 
@@ -138,6 +172,7 @@ class ClusterTests: XCTestCase {
         ("testSingleNodeJoinsThroughSeed", testSingleNodeJoinsThroughSeed),
         ("testTenNodesJoinSequentially", testTenNodesJoinSequentially),
         ("testTwentyNodesJoinSequentially", testTwentyNodesJoinSequentially),
+        ("testFiftyNodesJoinInParallel", testFiftyNodesJoinInParallel)
 
     ]
 

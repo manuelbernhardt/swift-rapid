@@ -26,7 +26,7 @@ class GrpcMessagingClient: MessagingClient {
         return sendMessage(recipient: recipient, msg: msg, retries: 0)
     }
 
-    private func sendMessage(recipient: Endpoint, msg: RapidRequest, retries: Int) -> EventLoopFuture<RapidResponse> {
+    private func sendMessage(recipient: Endpoint, msg: RapidRequest, retries: Int, attempt: Int = 0) -> EventLoopFuture<RapidResponse> {
 
         func connect() -> MembershipServiceClient {
             let channel = ClientConnection
@@ -41,8 +41,18 @@ class GrpcMessagingClient: MessagingClient {
             clients[recipient] ?? connect()
         }
 
-        // TODO retry
-        return client.sendRequest(msg, callOptions: CallOptions(timeout: timeoutForMessage(msg))).response
+        // TODO implement retry!!!!
+        return client.sendRequest(msg, callOptions: CallOptions(timeout: timeoutForMessage(msg)))
+            .response
+            .flatMapError({ (error: Error) in
+                let loop = self.group.next()
+                let failed: EventLoopFuture<RapidResponse> = loop.makeFailedFuture(error)
+                if (attempt < retries) {
+                    return self.sendMessage(recipient: recipient, msg: msg, retries: retries, attempt: attempt + 1)
+                } else {
+                    return failed
+                }
+        })
     }
 
     func shutdown(el: EventLoop) throws {

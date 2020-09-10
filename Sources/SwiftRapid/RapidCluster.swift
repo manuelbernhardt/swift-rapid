@@ -50,8 +50,6 @@ final public class RapidCluster {
     public struct Builder {
         private let logger = Logger(label: "rapid.RapidCluster")
 
-        private let joinAttempts = 5
-
         public var host: String = ""
         public var port: Int = 0
         public var metadata: Metadata = Metadata()
@@ -157,7 +155,7 @@ final public class RapidCluster {
                         failureDetectorProvider: edgeFailureDetectorProvider,
                         broadcaster: broadcaster,
                         messagingClient: messagingClient,
-                        allMetadata: [selfEndpoint: metadata],
+                        allMetadata: allMetadata,
                         subscriptions: eventSubscriptions,
                         provider: actorRefProvider,
                         el: eventLoopGroup.next()
@@ -174,7 +172,7 @@ final public class RapidCluster {
                 )
             }
 
-            for attempt in 0..<joinAttempts {
+            for attempt in 0..<settings.joinAttempts {
                 do {
                     return try joinAttempt(seedEndpoint: seedEndpoint, listenAddress: listenAddress, nodeId: currentIdentifier, attempt: attempt)
                 } catch RapidClusterError.joinError(let joinResponse) {
@@ -182,12 +180,15 @@ final public class RapidCluster {
                     case .uuidAlreadyInRing:
                         logger.error("Node with the same UUID already present. Retrying.")
                         currentIdentifier = nodeIdFromUUID(UUID())
+                        sleep(UInt32(settings.joinDelaySeconds))
                         break
                     case .hostnameAlreadyInRing:
                         logger.error("Membership rejected, retrying.")
+                        sleep(UInt32(settings.joinDelaySeconds))
                         break
                     case .viewChangeInProgress:
                         logger.error("Seed node is executing a view change, retrying.")
+                        sleep(UInt32(settings.joinDelaySeconds))
                         break
                     default:
                         throw RapidClusterError.unknownJoinError

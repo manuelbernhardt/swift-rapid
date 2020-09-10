@@ -262,7 +262,7 @@ final class RapidStateMachine: Actor {
                 }
                 return response
             case .safeToJoin:
-                common.joiners.append(callback)
+                common.joiners[msg.sender] = callback
                 // simulate K alerts, one for each of the expected observers
                 let observers = common.view.getExpectedObserversOf(node: msg.sender)
                 for i in 0..<observers.count {
@@ -420,8 +420,8 @@ final class RapidStateMachine: Actor {
                         $0.messages = common.postponedAlertMessages
                     }
                 }
-                common.postponedAlertMessages = []
                 self.this.tell(.rapidRequest(batch))
+                common.postponedAlertMessages = []
                 // unstash all and return to active state
                 for msg in stashedMessages {
                     self.this.tell(.rapidRequest(msg))
@@ -439,14 +439,16 @@ final class RapidStateMachine: Actor {
             }
         }
 
-        private func handleConsensus(msg: RapidRequest) throws -> RapidResponse {
+        private mutating func handleConsensus(msg: RapidRequest) throws -> RapidResponse {
             switch(msg.content) {
                 case .fastRoundPhase2BMessage:
+                    // we receive a consensus round vote for a configuration we haven't learned about yet
+                    // this can happen when we have not yet received enough alert messages to trigger a view change
                     if (!common.view.getCurrentConfiguration().knownConfigurations.contains(msg.fastRoundPhase2BMessage.configurationID)) {
-                        // TODO turn into log
-                        print("**************************************** Received early! proposal")
+                        stashedMessages.append(msg)
+                    } else {
+                        fastPaxos.handleFastRoundProposal(proposalMessage: msg.fastRoundPhase2BMessage)
                     }
-                    fastPaxos.handleFastRoundProposal(proposalMessage: msg.fastRoundPhase2BMessage)
                     return RapidResponse()
             case .phase1AMessage, .phase1BMessage, .phase2AMessage, .phase2BMessage:
                 fatalError("Not implemented")
@@ -513,10 +515,20 @@ final class RapidStateMachine: Actor {
                     $0.metadataValues = Array(common.metadata.values)
                 }
             }
-            for joinerCallback in common.joiners {
-                joinerCallback?(Result.success(RapidResult.rapidResponse(response)))
+            let negativeResponse = RapidResponse.with {
+                $0.joinResponse = JoinResponse.with {
+                    $0.sender = common.selfEndpoint
+                    $0.statusCode = JoinStatusCode.viewChangeInProgress
+                }
             }
-            common.joiners = []
+            for (node, joinerCallback) in common.joiners {
+                if (proposal.contains(node)) {
+                    joinerCallback?(Result.success(RapidResult.rapidResponse(response)))
+                } else {
+                    joinerCallback?(Result.success(RapidResult.rapidResponse(negativeResponse)))
+                }
+            }
+            common.joiners = [:]
         }
     }
 
@@ -531,7 +543,7 @@ final class RapidStateMachine: Actor {
         var failureDetectorProvider: EdgeFailureDetectorProvider
 
         // ~~~ joiner state
-        var joiners = [((Result<ResponseType, Error>) -> ())?]()
+        var joiners = [Endpoint:((Result<ResponseType, Error>) -> ())?]()
         var joinerNodeIds = [Endpoint:NodeId]()
         var joinerMetadata = [Endpoint:Metadata]()
 
@@ -617,11 +629,6 @@ extension BatchedAlertMessageHandler {
         let destination = alert.edgeDst
         let currentConfigurationID = common.view.getCurrentConfigurationId()
         if (currentConfigurationID != alert.configurationID) {
-            if (!common.view.getCurrentConfiguration().knownConfigurations.contains(alert.configurationID)) {
-                // TODO in this scenario we should be stashing the alert and evaluate it in the next switch
-                // TODO use logging (TRACE)
-                print("Stashing AlertMessage for unknown configuration \(alert.configurationID) received during configuration \(currentConfigurationID)")
-            }
             return false
         }
 

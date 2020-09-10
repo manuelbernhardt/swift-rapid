@@ -8,7 +8,7 @@ public struct Settings {
     let H = 9
     let L = 4
 
-    var failureDetectorInterval = TimeAmount.seconds(1)
+    var failureDetectorInterval = TimeAmount.seconds(5)
 
     var consensusFallbackBaseDelay = TimeAmount.seconds(1)
 
@@ -16,5 +16,9 @@ public struct Settings {
     var messagingClientJoinRequestTimeout = TimeAmount.seconds(10)
     var messagingClientProbeRequestTimeout = TimeAmount.seconds(1)
 
-    var batchingWindow = TimeAmount.milliseconds(300)
+    // TODO should be lower, but performance not very good atm.
+    var batchingWindow = TimeAmount.milliseconds(1000)
+
+    var joinDelaySeconds = 5
+    var joinAttempts = 10
 }
