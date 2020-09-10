@@ -26,6 +26,21 @@ class AdaptiveAccrualFailureDetectorTest: XCTestCase {
         XCTAssertFalse(fd.isAvailable()) // 11300
     }
 
+    func testFailedWhenNoLongerResponds() throws {
+        let fd = createFailureDetector(clock: generateTime(intervals: [0, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]))
+        fd.heartbeat() // 100
+        fd.heartbeat() // 200
+        fd.heartbeat() // 300
+        XCTAssertTrue(fd.isAvailable()) // 400
+        XCTAssertFalse(fd.isAvailable()) // 500
+        XCTAssertFalse(fd.isAvailable()) // 600
+        XCTAssertFalse(fd.isAvailable()) // 700
+        XCTAssertFalse(fd.isAvailable()) // 800
+        XCTAssertFalse(fd.isAvailable()) // 900
+        XCTAssertFalse(fd.isAvailable()) // 1000
+
+    }
+
     func testAvailableAfterFailures() throws {
         let regularIntervals: [UInt64] = Array(repeating: 1000, count: 1000)
         let intervalsWithPauses = [5 * 60 * 1000, 100, 900, 100, 7000, 100, 900, 100, 900]
@@ -107,6 +122,7 @@ class AdaptiveAccrualFailureDetectorTest: XCTestCase {
         ("testAvailableBeforeFirstHeartbeat", testAvailableBeforeFirstHeartbeat),
         ("testAvailableAfterAFewHeartbeats", testAvailableAfterAFewHeartbeats),
         ("testFailedAfterMissedHeartbeats", testFailedAfterMissedHeartbeats),
+        ("testFailedWhenNoLongerResponds", testFailedWhenNoLongerResponds),
         ("testAvailableAfterFailures", testAvailableAfterFailures),
         ("testAvailableWhenLatencyFluctuates", testAvailableWhenLatencyFluctuates),
         ("testUseOfMaxSampleSize", testUseOfMaxSampleSize)

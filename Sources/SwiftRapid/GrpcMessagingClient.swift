@@ -41,7 +41,6 @@ class GrpcMessagingClient: MessagingClient {
             clients[recipient] ?? connect()
         }
 
-        // TODO implement retry!!!!
         return client.sendRequest(msg, callOptions: CallOptions(timeout: timeoutForMessage(msg)))
             .response
             .flatMapError({ (error: Error) in

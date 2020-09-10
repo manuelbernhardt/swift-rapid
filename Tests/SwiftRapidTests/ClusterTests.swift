@@ -79,8 +79,40 @@ class ClusterTests: XCTestCase {
         waitAndVerifyAgreement(expectedSize: numNodes, maxTries: 5, interval: 1.0)
         verifyCluster(expectedSize: numNodes)
         verifyMetadata(expectedSize: numNodes)
-
     }
+
+    func testFiftyNodesJoinTwentyNodeCluster() throws {
+        addMetadata = true
+        let numNodesPhase1 = 20
+        let numNodesPhase2 = 50
+        let seedEndpoint = addressFromParts("127.0.0.1", basePort)
+        try createCluster(numNodes: numNodesPhase1, seedEndpoint: seedEndpoint)
+        waitAndVerifyAgreement(expectedSize: numNodesPhase1, maxTries: 5, interval: 1.0)
+        verifyMetadata(expectedSize: numNodesPhase1)
+        try extendCluster(numNodes: numNodesPhase2, seed: seedEndpoint)
+        waitAndVerifyAgreement(expectedSize: numNodesPhase1 + numNodesPhase2, maxTries: 5, interval: 1.0)
+        verifyMetadata(expectedSize: numNodesPhase1 + numNodesPhase2)
+    }
+
+    func testOneNodeFails() throws {
+        settings.failureDetectorInterval = TimeAmount.milliseconds(1000)
+        settings.messagingClientProbeRequestTimeout = TimeAmount.milliseconds(500)
+        let numNodes = 5
+        let seedEndpoint = addressFromParts("127.0.0.1", basePort)
+        try createCluster(numNodes: numNodes, seedEndpoint: seedEndpoint)
+        waitAndVerifyAgreement(expectedSize: numNodes, maxTries: 5, interval: 1.0)
+        // TODO UGH, another few hours of my life gone because TODO should'be been FIXME
+        // FIXME Finish implementing the failure detector which will succeed so long as it has zero intervals, which
+        // FIXME is the case if we fail the node too soon
+        sleep(2)
+        let victim = addressFromParts("127.0.0.1", basePort + 3)
+        failSomeNodes(nodesToFail: [victim])
+        waitAndVerifyAgreement(expectedSize: numNodes - 1, maxTries: 10, interval: 2.0)
+    }
+
+
+
+    // ~~~ utility methods
 
     func createCluster(numNodes: Int, seedEndpoint: Endpoint) throws {
         let seedNode: RapidCluster = try buildCluster(endpoint: seedEndpoint).start()
@@ -107,6 +139,24 @@ class ClusterTests: XCTestCase {
         while(counter.load() > 0) {
             Thread.sleep(forTimeInterval: 1.0)
         }
+    }
+
+    func failSomeNodes(nodesToFail: [Endpoint]) {
+        let dispatchQueue: DispatchQueue = DispatchQueue(label: String(describing: "test.cluster.killer"), attributes: .concurrent)
+        let counter = NIOAtomic.makeAtomic(value: nodesToFail.count)
+        for _ in 0..<nodesToFail.count {
+            dispatchQueue.async {
+                for nodeToFail in nodesToFail {
+                    XCTAssertTrue(self.instances.get(key: nodeToFail) != nil)
+                    try! self.instances.get(key: nodeToFail)?.shutdown()
+                    let _ = self.instances.remove(key: nodeToFail)
+                    counter.sub(1)
+                }
+            }
+        }
+        while(counter.load() > 0) {
+            Thread.sleep(forTimeInterval: 1.0)
+        }
 
     }
 
@@ -114,6 +164,7 @@ class ClusterTests: XCTestCase {
         RapidCluster.Builder.with {
             $0.host = String(decoding: endpoint.hostname, as: UTF8.self)
             $0.port = Int(endpoint.port)
+            $0.settings = settings
             if (addMetadata) {
                 $0.metadata = Metadata.with {
                     $0.metadata = ["Key": endpoint.textFormatString().data(using: .utf8)!]
@@ -138,7 +189,7 @@ class ClusterTests: XCTestCase {
 
     func verifyMetadata(expectedSize: Int) {
         for instance in instances.values() {
-            XCTAssertEqual(try! instance.getClusterMetadata().count, expectedSize)
+            XCTAssertEqual(try! instance.getClusterMetadata().count, expectedSize, String(instance.getEndpoint().port))
         }
     }
 
@@ -171,8 +222,9 @@ class ClusterTests: XCTestCase {
         ("testSingleNodeJoinsThroughSeed", testSingleNodeJoinsThroughSeed),
         ("testTenNodesJoinSequentially", testTenNodesJoinSequentially),
         ("testTwentyNodesJoinSequentially", testTwentyNodesJoinSequentially),
-        ("testFiftyNodesJoinInParallel", testFiftyNodesJoinInParallel)
-
+        ("testFiftyNodesJoinInParallel", testFiftyNodesJoinInParallel),
+        ("testFiftyNodesJoinTwentyNodeCluster", testFiftyNodesJoinTwentyNodeCluster),
+        ("testOneNodeFails", testOneNodeFails)
     ]
 
 }
@@ -193,6 +245,12 @@ class ConcurrentTestDictionary<K, V> where K: Hashable {
     func get(key: K) -> V? {
         queue.sync() {
             return self.dictionary[key]
+        }
+    }
+
+    func remove(key: K) -> V? {
+        queue.sync {
+            return self.dictionary.removeValue(forKey: key)
         }
     }
 

@@ -25,6 +25,10 @@ final public class RapidCluster {
         self.listenAddress = listenAddress
     }
 
+    public func getEndpoint() -> Endpoint {
+        self.listenAddress
+    }
+
     public func getMemberList() throws -> [Endpoint] {
         try checkIfRunning()
         return try membershipService.getMemberList().wait()

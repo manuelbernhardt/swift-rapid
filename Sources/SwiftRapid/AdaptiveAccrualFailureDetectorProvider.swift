@@ -2,7 +2,8 @@ import Foundation
 import NIO
 import Dispatch
 
-// TODO now we use one event loop for all FDs which may not be all that great
+// FIXME if there has been zero successful probes, we reply that the FD is healthy (to not fail right away)
+// FIXME but if this continues for too long then of course this is wrong. we need a mechanism to take this into account
 class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
 
     private let messagingClient: MessagingClient
@@ -78,13 +79,13 @@ final class AdaptiveAccrualFailureDetectorActor: Actor {
             if (!fd.isAvailable(at: now) && !hasNotified) {
                 callback?(Result.success(signalFailure(subject)))
                 hasNotified = true
-            } else {
+            } else if(!hasNotified) {
                 let _ = self.messagingClient
                     .sendMessageBestEffort(recipient: subject, msg: self.probeRequest)
                     .map { response in
                         switch(response.content) {
                         case .probeResponse:
-                            // TODO handle probe status / fail after too many probes in initializing state
+                            // FIXME handle probe status / fail after too many probes in initializing state
                             self.this?.tell(.heartbeat)
                         default:
                             return
