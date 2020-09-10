@@ -102,7 +102,6 @@ class ClusterTests: XCTestCase {
                         .join(seedEndpoint: seed)
                 self.instances.put(key: joiningEndpoint, value: joiningNode)
                 counter.sub(1)
-                print("One more node")
             }
         }
         while(counter.load() > 0) {
