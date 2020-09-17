@@ -1,5 +1,6 @@
 import Foundation
 import NIO
+import NIOConcurrencyHelpers
 
 /// Conforming to this protocol adds the ability to schedule tasks to be executed on a "fire and forget"
 /// basis and at the same time ensure that only one task is executed at the same time. As a result, only
@@ -43,6 +44,8 @@ class ActorRef<A: Actor> {
 
     private let dispatchQueue: DispatchQueue
 
+    private let isStopping: NIOAtomic = NIOAtomic.makeAtomic(value: false)
+
     init(for actor: A) {
         self.actor = actor
         self.dispatchQueue = DispatchQueue(label: String(describing: actor.self))
@@ -50,26 +53,33 @@ class ActorRef<A: Actor> {
 
     /// Handle a message in a fire-and-forget fashion
     func tell(_ msg: A.MessageType) {
-        dispatchQueue.async {
-            self.actor.receive(msg, nil)
+        if (!isStopping.load()) {
+            dispatchQueue.async {
+                self.actor.receive(msg, nil)
+            }
         }
     }
 
     /// Handle a message that expects to return a response at some point
     func ask(_ msg: A.MessageType) -> EventLoopFuture<A.ResponseType> {
         let promise = actor.el.makePromise(of: A.ResponseType.self)
-        let callback = { (result: Result<A.ResponseType, Error>) in
-            switch result {
+        if (!isStopping.load()) {
+            let callback = { (result: Result<A.ResponseType, Error>) in
+                switch result {
                 case .success(let value):
                     promise.succeed(value)
                 case .failure(let error):
                     promise.fail(error)
                 }
+            }
+            dispatchQueue.async {
+                self.actor.receive(msg, callback)
+            }
+            return promise.futureResult
+        } else {
+            promise.fail(ActorError.stopping)
+            return promise.futureResult
         }
-        dispatchQueue.async {
-            self.actor.receive(msg, callback)
-        }
-        return promise.futureResult
     }
 
     /// Starts the actor
@@ -79,7 +89,8 @@ class ActorRef<A: Actor> {
 
     /// Stops the actor
     func stop(el: EventLoop) -> EventLoopFuture<Void> {
-        self.actor.stop(el: el)
+        isStopping.store(true)
+        return self.actor.stop(el: el)
     }
 
 
@@ -97,4 +108,8 @@ class ActorRefProvider {
         ActorRef(for: try creator(group.next()))
     }
 
+}
+
+enum ActorError: Error, Equatable {
+    case stopping
 }

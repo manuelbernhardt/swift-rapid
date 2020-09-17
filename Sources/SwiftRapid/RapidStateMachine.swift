@@ -98,7 +98,7 @@ final class RapidStateMachine: Actor {
                 fd.cancel(promise: promise)
                 return promise.futureResult
             }
-            return EventLoopFuture.whenAllComplete(cancellationFutures, on: el).map { _ in ()}
+            return EventLoopFuture.whenAllComplete(cancellationFutures, on: el).map { _ in () }
         }
         switch state {
             case .active(let activeState):
@@ -195,6 +195,7 @@ final class RapidStateMachine: Actor {
                                 return .active(self)
                             } else {
                                 respond(RapidResponse())
+                                print("\(common.selfEndpoint.port) Switching to view changing state")
                                 return try .viewChanging(ViewChangingState(self, proposal: proposal))
                             }
                         case .probeMessage(let probe):
@@ -327,7 +328,6 @@ final class RapidStateMachine: Actor {
 
         // no more alert message queue, we have flushed them before
         // no need for a cut detector, we already made the decision to reconfigure
-        // no active failure detectors
         init(_ previousState: ActiveState, proposal: [Endpoint]) throws {
             self.common = previousState.common
             self.this = previousState.this
@@ -369,6 +369,7 @@ final class RapidStateMachine: Actor {
             case .rapidRequest(let request):
                 switch request.content {
                 case .joinMessage:
+                    print("\(common.selfEndpoint.port) Rejecting join request")
                     let response = RapidResponse.with {
                         $0.joinResponse = JoinResponse.with {
                             $0.sender = common.selfEndpoint
@@ -426,6 +427,7 @@ final class RapidStateMachine: Actor {
                 for msg in stashedMessages {
                     self.this.tell(.rapidRequest(msg))
                 }
+                print("\(common.selfEndpoint.port) Switching to active state")
                 return .active(try ActiveState(self))
             case .batchedAlertTick:
                 sendAlertBatch()
@@ -447,6 +449,7 @@ final class RapidStateMachine: Actor {
                     if (!common.view.getCurrentConfiguration().knownConfigurations.contains(msg.fastRoundPhase2BMessage.configurationID)) {
                         stashedMessages.append(msg)
                     } else {
+                        print("\(self.common.selfEndpoint.port) Received vote")
                         fastPaxos.handleFastRoundProposal(proposalMessage: msg.fastRoundPhase2BMessage)
                     }
                     return RapidResponse()
@@ -594,7 +597,7 @@ extension SubjectFailedHandler where Self: AlertBatcher {
 protocol ProbeMessageHandler { }
 extension ProbeMessageHandler {
     func handleProbe(msg: ProbeMessage) -> RapidResponse {
-        RapidResponse.with {
+        return RapidResponse.with {
             $0.probeResponse = ProbeResponse()
         }
     }

@@ -7,6 +7,11 @@ import Foundation
 import Backtrace
 import Logging
 
+/// Tests common and edge cluster creation / change / failure scenarios
+///
+/// /!\ Make sure your shell has a high enough open file limit! 1024 won't do at the level of concurrency of this test.
+///     You can change it using e.g. `ulimit -n 10000` on linux
+///
 class ClusterTests: XCTestCase {
 
     let instances = ConcurrentTestDictionary<Endpoint, RapidCluster>()
@@ -39,7 +44,6 @@ class ClusterTests: XCTestCase {
             try! instance.shutdown()
         }
     }
-
 
     func testSingleNodeJoinsThroughSeed() throws {
         let seedEndpoint = addressFromParts("127.0.0.1", basePort)
@@ -82,7 +86,6 @@ class ClusterTests: XCTestCase {
     }
 
     func testFiftyNodesJoinTwentyNodeCluster() throws {
-        addMetadata = true
         let numNodesPhase1 = 20
         let numNodesPhase2 = 50
         let seedEndpoint = addressFromParts("127.0.0.1", basePort)
@@ -95,13 +98,12 @@ class ClusterTests: XCTestCase {
     }
 
     func testOneNodeFails() throws {
-        settings.failureDetectorInterval = TimeAmount.milliseconds(1000)
-        settings.messagingClientProbeRequestTimeout = TimeAmount.milliseconds(500)
+        useFastFailureDetectorTimeouts()
         let numNodes = 5
         let seedEndpoint = addressFromParts("127.0.0.1", basePort)
         try createCluster(numNodes: numNodes, seedEndpoint: seedEndpoint)
         waitAndVerifyAgreement(expectedSize: numNodes, maxTries: 5, interval: 1.0)
-        // TODO UGH, another few hours of my life gone because TODO should'be been FIXME
+        // TODO UGH, another few hours of my life gone because TODO should've been FIXME
         // FIXME Finish implementing the failure detector which will succeed so long as it has zero intervals, which
         // FIXME is the case if we fail the node too soon
         sleep(2)
@@ -110,9 +112,48 @@ class ClusterTests: XCTestCase {
         waitAndVerifyAgreement(expectedSize: numNodes - 1, maxTries: 10, interval: 2.0)
     }
 
+    /// The problem is that the seed node gets stuck in view changing state
+    /// So then we can not make progress / allow others to join
+    /// It's okay to postpone joiners, but we shuoldn't stay stuck
+    /// Why are we stuck in that state
+    /// Likely because we don't get the necessary votes to switch back?
+    /// ==> We need to implement the timeout-based failire mechanism
+    func testConcurrentNodesJoinAndFail() throws {
+        settings.failureDetectorInterval = TimeAmount.milliseconds(1000)
+        settings.messagingClientProbeRequestTimeout = TimeAmount.milliseconds(1000)
+        let numNodes = 20
+        let numFailing = 3
+        let numNodesPhase2 = 5
+        let seedEndpoint = addressFromParts("127.0.0.1", basePort)
+        try createCluster(numNodes: numNodes, seedEndpoint: seedEndpoint)
+        waitAndVerifyAgreement(expectedSize: numNodes, maxTries: 5, interval: 1.0)
+        print("CLUSTER")
+        print("CLUSTER")
+        print("CLUSTER")
+        print("CLUSTER")
+        // TODO remove once FD is fixed
+//        sleep(2)
+        var failingNodes = [Endpoint]()
+        for failingPort in (basePort + 2)..<(basePort + 2 + numFailing) {
+            failingNodes.append(addressFromParts("127.0.0.1", failingPort))
+        }
+        failSomeNodes(nodesToFail: failingNodes)
+        print("FAILED THE NODES")
+        print("FAILED THE NODES")
+        print("FAILED THE NODES")
+        print("FAILED THE NODES")
+        try! extendCluster(numNodes: numNodesPhase2, seed: seedEndpoint)
+        waitAndVerifyAgreement(expectedSize: numNodes - numFailing + numNodesPhase2, maxTries: 20, interval: 1.0)
+    }
+
 
 
     // ~~~ utility methods
+
+    func useFastFailureDetectorTimeouts() {
+        settings.failureDetectorInterval = TimeAmount.milliseconds(500)
+        settings.messagingClientProbeRequestTimeout = TimeAmount.milliseconds(500)
+    }
 
     func createCluster(numNodes: Int, seedEndpoint: Endpoint) throws {
         let seedNode: RapidCluster = try buildCluster(endpoint: seedEndpoint).start()
@@ -147,15 +188,24 @@ class ClusterTests: XCTestCase {
         for _ in 0..<nodesToFail.count {
             dispatchQueue.async {
                 for nodeToFail in nodesToFail {
-                    XCTAssertTrue(self.instances.get(key: nodeToFail) != nil)
-                    try! self.instances.get(key: nodeToFail)?.shutdown()
-                    let _ = self.instances.remove(key: nodeToFail)
-                    counter.sub(1)
+                    if (self.instances.get(key: nodeToFail) != nil) {
+                        do {
+                            try self.instances.get(key: nodeToFail)?.shutdown()
+                        } catch {
+                            // ignore
+                        }
+                        let _ = self.instances.remove(key: nodeToFail)
+                        counter.sub(1)
+                    } else {
+                        print("******* Cluster instance for \(nodeToFail.port) not there???")
+
+                    }
                 }
             }
         }
         while(counter.load() > 0) {
             Thread.sleep(forTimeInterval: 1.0)
+            print("Sleeping")
         }
 
     }
@@ -224,7 +274,8 @@ class ClusterTests: XCTestCase {
         ("testTwentyNodesJoinSequentially", testTwentyNodesJoinSequentially),
         ("testFiftyNodesJoinInParallel", testFiftyNodesJoinInParallel),
         ("testFiftyNodesJoinTwentyNodeCluster", testFiftyNodesJoinTwentyNodeCluster),
-        ("testOneNodeFails", testOneNodeFails)
+        ("testOneNodeFails", testOneNodeFails),
+        ("testConcurrentNodesJoinAndFail", testConcurrentNodesJoinAndFail)
     ]
 
 }
@@ -248,9 +299,9 @@ class ConcurrentTestDictionary<K, V> where K: Hashable {
         }
     }
 
-    func remove(key: K) -> V? {
-        queue.sync {
-            return self.dictionary.removeValue(forKey: key)
+    func remove(key: K) -> () {
+        queue.async(flags: .barrier) {
+            self.dictionary.removeValue(forKey: key)
         }
     }
 

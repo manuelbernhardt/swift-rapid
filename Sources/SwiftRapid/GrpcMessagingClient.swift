@@ -7,6 +7,8 @@ import GRPC
 /// TODO error handling for failing connections? / channels - remove them from the clients dict
 class GrpcMessagingClient: MessagingClient {
 
+    private let isShuttingDown = NIOAtomic.makeAtomic(value: false)
+
     private let settings: Settings
     internal let group: MultiThreadedEventLoopGroup
 
@@ -27,7 +29,6 @@ class GrpcMessagingClient: MessagingClient {
     }
 
     private func sendMessage(recipient: Endpoint, msg: RapidRequest, retries: Int, attempt: Int = 0) -> EventLoopFuture<RapidResponse> {
-
         func connect() -> MembershipServiceClient {
             let channel = ClientConnection
                     .insecure(group: group)
@@ -37,13 +38,15 @@ class GrpcMessagingClient: MessagingClient {
             return client
         }
 
-        let client: MembershipServiceClient = clientLock.withLock {
-            clients[recipient] ?? connect()
-        }
+        if (!isShuttingDown.load()) {
 
-        return client.sendRequest(msg, callOptions: CallOptions(timeout: timeoutForMessage(msg)))
-            .response
-            .flatMapError({ (error: Error) in
+            let client: MembershipServiceClient = clientLock.withLock {
+                clients[recipient] ?? connect()
+            }
+
+            return client.sendRequest(msg, callOptions: CallOptions(timeout: timeoutForMessage(msg)))
+                    .response
+                    .flatMapError({ (error: Error) in
                 let loop = self.group.next()
                 let failed: EventLoopFuture<RapidResponse> = loop.makeFailedFuture(error)
                 if (attempt < retries) {
@@ -51,12 +54,19 @@ class GrpcMessagingClient: MessagingClient {
                 } else {
                     return failed
                 }
-        })
+            })
+
+        } else {
+            let failed: EventLoopFuture<RapidResponse> = self.group.next().makeFailedFuture(GrpcMessagingError.shutdownInProgress)
+            return failed
+        }
+
     }
 
     func shutdown(el: EventLoop) throws {
+        isShuttingDown.store(true)
         let terminations = clients.map { (_, client) in
-            client.channel.close()
+            client.channel.close().hop(to: el)
         }
         try _ = EventLoopFuture.whenAllComplete(terminations, on: el).wait()
     }
@@ -74,4 +84,8 @@ class GrpcMessagingClient: MessagingClient {
                 return toGRPCTimeout(settings.messagingClientDefaultRequestTimeout)
             }
     }
+}
+
+enum GrpcMessagingError: Error {
+    case shutdownInProgress
 }

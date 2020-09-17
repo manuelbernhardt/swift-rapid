@@ -44,11 +44,14 @@ final public class RapidCluster {
     }
 
     public func shutdown() throws {
+        // we need an own group to provide the loop to shut things down. failing this, the loop will still be in use
+        // while we try to shut down the group that provides it, for reasons not known.
         let shutdownLoop = eventLoopGroup.next()
         try membershipService.shutdown(el: shutdownLoop).wait()
         try messagingClient.shutdown(el: shutdownLoop)
         try messagingServer.shutdown()
-        try eventLoopGroup.syncShutdownGracefully()
+        // TODO this doesn't quite work in tests
+//        try eventLoopGroup.syncShutdownGracefully()
     }
 
     public struct Builder {
@@ -201,8 +204,8 @@ final public class RapidCluster {
             }
             try messagingClient.shutdown(el: eventLoopGroup.next())
             try messagingServer.shutdown()
-            try eventLoopGroup.syncShutdownGracefully()
-            try eventLoopGroup.syncShutdownGracefully()
+            // TODO this doesn't quite work in tests
+            // try eventLoopGroup.syncShutdownGracefully()
             throw RapidClusterError.joinFailed
         }
 
