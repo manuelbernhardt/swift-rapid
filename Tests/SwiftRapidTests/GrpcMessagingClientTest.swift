@@ -54,7 +54,7 @@ class GrpcMessagingClientTest: XCTestCase, TestClientMessaging, TestServerMessag
     private func withClient<T>(_ body: (MessagingClient) -> T) -> T {
         let client = GrpcMessagingClient(group: eventLoopGroup!, settings: clientSettings)
         defer {
-            try! client.shutdown(el: eventLoopGroup!.next())
+            try! client.shutdown(el: eventLoopGroup!.next()).wait()
         }
         return body(client)
     }

@@ -112,14 +112,10 @@ class FastPaxos {
 
         if (receivedVotes.count >= membershipSize - F) {
             if (count >= membershipSize - F) {
-                print("\(selfEndpoint.port) Enough votes")
                 logger.debug("Proposal of size \(proposalMessage.endpoints.count)")
                 wrappedDecisionCallback(proposalMessage.endpoints)
             }
-        } else {
-            print("\(selfEndpoint.port) Not enough votes yet \(receivedVotes.count) vs \(membershipSize - F)")
         }
-
     }
 
     private func randomFallbackDelay() -> TimeAmount {

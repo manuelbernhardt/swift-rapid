@@ -18,7 +18,9 @@ extension TestServerMessaging {
         let server = TestMessagingServer(address: address, group: eventLoopGroup!, disableTestMembershipService: disableTestMembershipService)
         try! server.start()
         defer {
-            try! server.shutdown()
+            eventLoopGroup.map { group in
+                try! server.shutdown(el: group.next()).wait()
+            }
         }
         return body(server)
     }
@@ -30,7 +32,7 @@ extension TestClientMessaging {
         testClient.delayBestEffortMessages(for: delay)
         defer {
             if let group = eventLoopGroup {
-                try! testClient.shutdown(el: group.next())
+                try! testClient.shutdown(el: group.next()).wait()
             }
         }
         return body(testClient)

@@ -86,6 +86,6 @@ class RapidMembershipService: MembershipService {
 
     func shutdown(el: EventLoop) -> EventLoopFuture<Void> {
         self.isShutdown.store(true)
-        return try stateMachineRef.stop(el: el)
+        return stateMachineRef.stop(el: el)
     }
 }

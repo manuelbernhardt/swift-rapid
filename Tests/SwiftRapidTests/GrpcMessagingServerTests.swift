@@ -45,7 +45,9 @@ class GrpcMessagingServerTest: XCTestCase, TestClientMessaging {
         let server = GrpcMessagingServer(address: address, group: eventLoopGroup!)
         try! server.start()
         defer {
-            try! server.shutdown()
+            eventLoopGroup.map { group in
+                try! server.shutdown(el: group.next()).wait()
+            }
         }
         return body(server)
     }

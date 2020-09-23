@@ -22,7 +22,7 @@ public protocol MessagingClient {
     func sendMessageBestEffort(recipient: Endpoint, msg: RapidRequest) -> EventLoopFuture<RapidResponse>
 
     /// Signals the messaging client that it should free up resources in use
-    func shutdown(el: EventLoop) throws
+    func shutdown(el: EventLoop) -> EventLoopFuture<Void>
 
 
 }

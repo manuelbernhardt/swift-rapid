@@ -24,31 +24,31 @@ class GrpcMessagingServer: MessagingServer, MembershipServiceProvider {
             }
     }
 
-    func shutdown() throws {
-        try server.map {
-            try $0.close().wait()
-        }
+    func shutdown(el: EventLoop) -> EventLoopFuture<Void> {
+        server.map {
+            $0.close()
+        } ?? el.makeSucceededFuture(())
     }
 
     func onMembershipServiceInitialized(membershipService: MembershipService) {
         self.membershipService = membershipService
     }
 
+    private let probeResponse = RapidResponse.with {
+        $0.probeResponse = ProbeResponse()
+    }
+
+    private let bootstrappingProbeResponse = RapidResponse.with {
+        $0.probeResponse = ProbeResponse.with {
+            $0.status = NodeStatus.bootstrapping
+        }
+    }
+
     func sendRequest(request: RapidRequest, context: StatusOnlyCallContext) -> EventLoopFuture<RapidResponse> {
         if let service = membershipService {
             return service.handleRequest(request: request)
         } else {
-            switch request.content {
-                case .probeMessage:
-                    let response = RapidResponse.with {
-                        $0.probeResponse = ProbeResponse.with {
-                            $0.status = NodeStatus.bootstrapping
-                        }
-                    }
-                    return context.eventLoop.makeSucceededFuture(response)
-                default:
-                    return context.eventLoop.makeSucceededFuture(RapidResponse())
-            }
+            return context.eventLoop.makeSucceededFuture(RapidResponse())
         }
     }
 }

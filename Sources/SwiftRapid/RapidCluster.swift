@@ -44,14 +44,23 @@ final public class RapidCluster {
     }
 
     public func shutdown() throws {
-        // we need an own group to provide the loop to shut things down. failing this, the loop will still be in use
-        // while we try to shut down the group that provides it, for reasons not known.
+        // hmm...
+        // TODO this is evidently not the cleanest approach and it is actually buggy
+        // shutting down the event loop at the end may happen too soon in some cases, at least we've got a leaking loop
+        // somewhere. unsure as to what causes it though
+        // in any case we want to maintain the semantics of shutting down other components (client and server) independently of the membership service
+        // shutdown succeeding or not
+        // order matters as well for a graceful shutdown - without client / server, the membership service can't work and we get leaking promises
         let shutdownLoop = eventLoopGroup.next()
-        try membershipService.shutdown(el: shutdownLoop).wait()
-        try messagingClient.shutdown(el: shutdownLoop)
-        try messagingServer.shutdown()
-        // TODO this doesn't quite work in tests
-//        try eventLoopGroup.syncShutdownGracefully()
+        membershipService.shutdown(el: shutdownLoop).whenComplete { _ in
+            self.messagingServer.shutdown(el: shutdownLoop).whenComplete { _ in
+                self.messagingClient.shutdown(el: shutdownLoop).whenComplete { _ in
+                    self.eventLoopGroup.shutdownGracefully { _ in
+                        ()
+                    }
+                }
+            }
+        }
     }
 
     public struct Builder {
@@ -90,7 +99,7 @@ final public class RapidCluster {
             let currentIdentifier = nodeIdFromUUID(UUID())
             // TODO should also be assigned a group and be the one to hand out event loops
             let actorRefProvider = ActorRefProvider(group: eventLoopGroup)
-            let edgeFailureDetectorProvider = self.edgeFailureDetectorProvider ?? AdaptiveAccrualFailureDetectorProvider(selfEndpoint: selfEndpoint, messagingClient: messagingClient, provider: actorRefProvider, el: eventLoopGroup.next())
+            let edgeFailureDetectorProvider = self.edgeFailureDetectorProvider ?? AdaptiveAccrualFailureDetectorProvider(selfEndpoint: selfEndpoint, messagingClient: messagingClient, provider: actorRefProvider, settings: self.settings, el: eventLoopGroup.next())
             let membershipView = MembershipView(K: self.settings.K, nodeIds: [currentIdentifier], endpoints: [selfEndpoint])
             let membershipService = try RapidMembershipService(
                     selfEndpoint: selfEndpoint,
@@ -131,7 +140,7 @@ final public class RapidCluster {
             let broadcaster = UnicastToAllBroadcaster(client: messagingClient, el: eventLoopGroup.next())
             // TODO should also be assigned a group and be the one to hand out event loops
             let actorRefProvider = ActorRefProvider(group: eventLoopGroup)
-            let edgeFailureDetectorProvider = self.edgeFailureDetectorProvider ?? AdaptiveAccrualFailureDetectorProvider(selfEndpoint: listenAddress, messagingClient: messagingClient, provider: actorRefProvider, el: eventLoopGroup.next())
+            let edgeFailureDetectorProvider = self.edgeFailureDetectorProvider ?? AdaptiveAccrualFailureDetectorProvider(selfEndpoint: listenAddress, messagingClient: messagingClient, provider: actorRefProvider, settings: self.settings, el: eventLoopGroup.next())
 
             func joinAttempt(seedEndpoint: Endpoint, listenAddress: Endpoint, nodeId: NodeId, attempt: Int) throws -> RapidCluster {
                 let joinRequest = RapidRequest.with {
@@ -202,10 +211,11 @@ final public class RapidCluster {
                     }
                 }
             }
-            try messagingClient.shutdown(el: eventLoopGroup.next())
-            try messagingServer.shutdown()
-            // TODO this doesn't quite work in tests
-            // try eventLoopGroup.syncShutdownGracefully()
+            let shutdownLoop = eventLoopGroup.next()
+            try messagingClient.shutdown(el: shutdownLoop).wait()
+            try messagingServer.shutdown(el: shutdownLoop).wait()
+            // TODO this sometimes appears to cause flakiness in tests
+            eventLoopGroup.shutdownGracefully({ _ in () })
             throw RapidClusterError.joinFailed
         }
 

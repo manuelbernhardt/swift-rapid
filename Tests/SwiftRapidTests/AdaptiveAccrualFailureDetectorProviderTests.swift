@@ -3,6 +3,7 @@ import NIOConcurrencyHelpers
 import XCTest
 import Foundation
 @testable import SwiftRapid
+import Backtrace
 
 /// Note: heartbeat timing is tuned so that this suite runs well on the CI
 class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessaging, TestClientMessaging {
@@ -13,6 +14,8 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
     override func setUp() {
         eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 4)
         clientSettings = Settings()
+        clientSettings.failureDetectorInterval = TimeAmount.milliseconds(500)
+        Backtrace.install()
     }
 
     override func tearDown() {
@@ -28,7 +31,7 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
             withTestServer(subjectAddress, { (subjectServer: TestMessagingServer) in
                 subjectServer.onMembershipServiceInitialized(membershipService: ProbeMembershipService(el: eventLoopGroup!.next()))
 
-                let provider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: address, messagingClient: client, provider: provider, el: eventLoopGroup!.next())
+                let provider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: address, messagingClient: client, provider: provider, settings: clientSettings, el: eventLoopGroup!.next())
 
                 var wasFailureSignaled = false
                 func signalFailure(endpoint: Endpoint) {
@@ -57,7 +60,7 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
             withTestServer(subjectAddress, { (subjectServer: TestMessagingServer) in
                 subjectServer.onMembershipServiceInitialized(membershipService: probeMembershipService)
 
-                let provider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: address, messagingClient: client, provider: provider, el: eventLoopGroup!.next())
+                let provider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: address, messagingClient: client, provider: provider, settings: clientSettings, el: eventLoopGroup!.next())
 
                 let failureCount = NIOAtomic.makeAtomic(value: 0)
                 func signalFailure(endpoint: Endpoint) -> () {
@@ -73,7 +76,7 @@ class AdaptiveAccrualFailureDetectorProviderTests: XCTestCase, TestServerMessagi
                 XCTAssertEqual(0, failureCount.load())
                 probeMembershipService.setDelay(delay: 2000000)
                 for _ in 0..<6 {
-                    let _ = fd()
+                    fd()
                     Thread.sleep(forTimeInterval: 0.5)
                 }
                 // the failure detector should report only one failure

@@ -1,4 +1,5 @@
 import Foundation
+import NIO
 
 /// The server side of the pluggable messaging API
 public protocol MessagingServer {
@@ -7,7 +8,7 @@ public protocol MessagingServer {
     func start() throws
 
     /// Signals the server that it should free all resources in use
-    func shutdown() throws
+    func shutdown(el: EventLoop) -> EventLoopFuture<Void>
 
     /// The messaging server is initialized before the cluster has been joined, because the
     /// node needs the ability to receive messages as part of the join protocol.

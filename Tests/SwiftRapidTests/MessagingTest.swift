@@ -163,7 +163,7 @@ class MessagingTest: XCTestCase, TestServerMessaging, TestClientMessaging {
             try view.ringAdd(node: serverAddress, nodeId: nodeId)
         }
         let broadcaster = UnicastToAllBroadcaster(client: client, el: eventLoopGroup!.next())
-        let failureDetectorProvider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: serverAddress, messagingClient: client, provider: provider!, el: eventLoopGroup!.next())
+        let failureDetectorProvider = AdaptiveAccrualFailureDetectorProvider(selfEndpoint: serverAddress, messagingClient: client, provider: provider!, settings: settings, el: eventLoopGroup!.next())
         let membershipService = try RapidMembershipService(selfEndpoint: serverAddress, settings: settings, view: view, failureDetectorProvider: failureDetectorProvider,
                 broadcaster: broadcaster, messagingClient: client, allMetadata: [serverAddress: Metadata()],
                 subscriptions: [],

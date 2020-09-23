@@ -16,8 +16,7 @@ public struct Settings {
     var messagingClientJoinRequestTimeout = TimeAmount.seconds(10)
     var messagingClientProbeRequestTimeout = TimeAmount.seconds(1)
 
-    // TODO should be lower, but performance not very good atm.
-    var batchingWindow = TimeAmount.milliseconds(1000)
+    var batchingWindow = TimeAmount.milliseconds(100)
 
     var joinDelaySeconds = 5
     var joinAttempts = 10

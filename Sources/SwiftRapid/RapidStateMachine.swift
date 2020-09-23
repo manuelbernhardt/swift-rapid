@@ -117,7 +117,6 @@ final class RapidStateMachine: Actor {
     enum RapidCommand {
         case rapidRequest(RapidRequest)
         case subjectFailed(Endpoint)
-        case proposalBroadcasted
         case viewChangeDecided([Endpoint])
         case batchedAlertTick
         case retrieveMemberList
@@ -155,14 +154,17 @@ final class RapidStateMachine: Actor {
 
             // failure detectors
             let subjects = try common.view.getSubjectsOf(node: common.selfEndpoint)
-            try self.failureDetectors = subjects.map { subject in
+            // for smaller clusters, the expander graph repeats subjects. we only want one failure detector per host though
+            // also, don't monitor ourselves
+            let monitoredSubjects = Set(subjects).filter { $0 != common.selfEndpoint }
+            try self.failureDetectors = monitoredSubjects.map { subject in
                 let fd = try common.failureDetectorProvider.createInstance(subject: subject, signalFailure: { failedSubject in
                     ref.tell(.subjectFailed(subject))
                 })
                 let fdTask = { (task: RepeatedTask) in
                     fd().hop(to: common.el)
                 }
-                return common.el.scheduleRepeatedAsyncTask(initialDelay: TimeAmount.seconds(0), delay: common.settings.failureDetectorInterval, fdTask)
+                return common.el.scheduleRepeatedAsyncTask(initialDelay: TimeAmount.seconds(1), delay: common.settings.failureDetectorInterval, fdTask)
             }
         }
 
@@ -195,7 +197,8 @@ final class RapidStateMachine: Actor {
                                 return .active(self)
                             } else {
                                 respond(RapidResponse())
-                                print("\(common.selfEndpoint.port) Switching to view changing state")
+                                // TODO debug logging
+                                // print("\(common.selfEndpoint.port) Switching to view changing state")
                                 return try .viewChanging(ViewChangingState(self, proposal: proposal))
                             }
                         case .probeMessage(let probe):
@@ -221,8 +224,6 @@ final class RapidStateMachine: Actor {
                     return .active(self)
                 case .viewChangeDecided:
                     fatalError("How on earth are we here?")
-                case .proposalBroadcasted:
-                    return .active(self)
                 case .retrieveMemberList:
                     callback?(Result.success(RapidResult.memberList(getMemberList())))
                     return .active(self)
@@ -356,9 +357,7 @@ final class RapidStateMachine: Actor {
                 let _ = try handleConsensus(msg: consensusMessage)
             }
 
-            let _ = fastPaxos.propose(proposal: sortedProposal).map { _ in
-                previousState.this.tell(.proposalBroadcasted)
-            }
+            let _ = fastPaxos.propose(proposal: sortedProposal)
         }
 
         mutating func handleMessage(_ msg: RapidCommand, _ callback: ((Result<ResponseType, Error>) -> ())? = nil) throws -> State {
@@ -369,7 +368,6 @@ final class RapidStateMachine: Actor {
             case .rapidRequest(let request):
                 switch request.content {
                 case .joinMessage:
-                    print("\(common.selfEndpoint.port) Rejecting join request")
                     let response = RapidResponse.with {
                         $0.joinResponse = JoinResponse.with {
                             $0.sender = common.selfEndpoint
@@ -410,9 +408,6 @@ final class RapidStateMachine: Actor {
                 // with according to the virtual synchrony model
                 try handleSubjectFailed(subject)
                 return .viewChanging(self)
-            case .proposalBroadcasted:
-                // all good
-                return .viewChanging(self)
             case .viewChangeDecided(let proposal):
                 try handleViewChangeDecided(proposal: proposal)
                 // create a synthetic batchedAlertMessage from all the postponed ones
@@ -427,7 +422,8 @@ final class RapidStateMachine: Actor {
                 for msg in stashedMessages {
                     self.this.tell(.rapidRequest(msg))
                 }
-                print("\(common.selfEndpoint.port) Switching to active state")
+                // TODO debug logging
+//                print("\(common.selfEndpoint.port) Switching to active state")
                 return .active(try ActiveState(self))
             case .batchedAlertTick:
                 sendAlertBatch()
@@ -449,7 +445,6 @@ final class RapidStateMachine: Actor {
                     if (!common.view.getCurrentConfiguration().knownConfigurations.contains(msg.fastRoundPhase2BMessage.configurationID)) {
                         stashedMessages.append(msg)
                     } else {
-                        print("\(self.common.selfEndpoint.port) Received vote")
                         fastPaxos.handleFastRoundProposal(proposalMessage: msg.fastRoundPhase2BMessage)
                     }
                     return RapidResponse()

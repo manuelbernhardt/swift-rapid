@@ -9,18 +9,20 @@ class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
     private let messagingClient: MessagingClient
     private let el: EventLoop
     private let selfEndpoint: Endpoint
+    private let settings: Settings
     private let provider: ActorRefProvider
 
-    init(selfEndpoint: Endpoint, messagingClient: MessagingClient, provider: ActorRefProvider, el: EventLoop) {
+    init(selfEndpoint: Endpoint, messagingClient: MessagingClient, provider: ActorRefProvider, settings: Settings, el: EventLoop) {
         self.selfEndpoint = selfEndpoint
         self.messagingClient = messagingClient
         self.provider = provider
+        self.settings = settings
         self.el = el
     }
 
     func createInstance(subject: Endpoint, signalFailure: @escaping (Endpoint) -> ()) throws -> () -> EventLoopFuture<()> {
         let failureDetectorRef = try provider.actorFor { el in
-            try AdaptiveAccrualFailureDetectorActor(subject: subject, selfEndpoint: selfEndpoint, signalFailure: signalFailure, messagingClient: messagingClient, el: el)
+            try AdaptiveAccrualFailureDetectorActor(subject: subject, selfEndpoint: selfEndpoint, signalFailure: signalFailure, expectFirstHeartbeatAfter: Double(settings.failureDetectorInterval.nanoseconds) / 1000000000, messagingClient: messagingClient, el: el)
         }
         try failureDetectorRef.start()
         return {
@@ -40,18 +42,21 @@ final class AdaptiveAccrualFailureDetectorActor: Actor {
     private let signalFailure: (Endpoint) -> ()
     private let messagingClient: MessagingClient
     private let fd: AdaptiveAccrualFailureDetector
+    private let expectFirstHeartbeatAfter: Double
     private var hasNotified = false
+    private var firstHeartbeatSent = false
 
     private let probeRequest: RapidRequest
 
     // TODO be less of a troll with the naming
     private var this: ActorRef<AdaptiveAccrualFailureDetectorActor>? = nil
 
-    init(subject: Endpoint, selfEndpoint: Endpoint, signalFailure: @escaping (Endpoint) -> (), messagingClient: MessagingClient, el: EventLoop) throws {
+    init(subject: Endpoint, selfEndpoint: Endpoint, signalFailure: @escaping (Endpoint) -> (), expectFirstHeartbeatAfter: Double, messagingClient: MessagingClient, el: EventLoop) throws {
         self.subject = subject
         self.selfEndpoint = selfEndpoint
         self.signalFailure = signalFailure
         self.messagingClient = messagingClient
+        self.expectFirstHeartbeatAfter = expectFirstHeartbeatAfter
         self.el = el
 
         // TODO config from settings
@@ -72,25 +77,45 @@ final class AdaptiveAccrualFailureDetectorActor: Actor {
         el.makeSucceededFuture(())
     }
 
+    let BootstrapLimit = 30
+    var bootstrappingCount = 0
+
     func receive(_ msg: MessageType, _ callback: ((Result<ResponseType, Error>) -> ())?) {
         switch(msg) {
         case .tick:
             let now = currentTimeNanos()
-            if (!fd.isAvailable(at: now) && !hasNotified) {
+            if(!firstHeartbeatSent) {
+                // stabilize inter-arrival time by using a synthetic first one, as connection establishment takes time
+                DispatchQueue.main.asyncAfter(deadline: .now() + expectFirstHeartbeatAfter) {
+                    self.this?.tell(.heartbeat)
+                }
+                let _ = self.messagingClient.sendMessageBestEffort(recipient: subject, msg: self.probeRequest).hop(to: el).map { _ in
+                    self.firstHeartbeatSent = true
+                }
+                callback?(Result.success(()))
+            } else if (firstHeartbeatSent && !fd.isAvailable(at: now) && !hasNotified) {
+                print("\(selfEndpoint.port): Node \(subject.port) failed with a probability of \(fd.suspicion())")
                 callback?(Result.success(signalFailure(subject)))
                 hasNotified = true
-            } else if(!hasNotified) {
+            } else if(firstHeartbeatSent && !hasNotified) {
                 let _ = self.messagingClient
                     .sendMessageBestEffort(recipient: subject, msg: self.probeRequest)
+                    .hop(to: el)
                     .map { response in
                         switch(response.content) {
                         case .probeResponse:
-                            // FIXME handle probe status / fail after too many probes in initializing state
-                            self.this?.tell(.heartbeat)
+                            if(response.probeResponse.status == NodeStatus.bootstrapping && self.bootstrappingCount < self.BootstrapLimit) {
+                                self.bootstrappingCount += 1
+                                self.this?.tell(.heartbeat)
+                            } else if(response.probeResponse.status == NodeStatus.ok) {
+                                self.this?.tell(.heartbeat)
+                            }
                         default:
                             return
                         }
                     }
+                callback?(Result.success(()))
+            } else {
                 callback?(Result.success(()))
             }
         case .heartbeat:
@@ -187,6 +212,7 @@ class AdaptiveAccrualFailureDetector {
 
         let newState = State(intervals: newIntervals, freshnessPoint: timestamp)
         self.state = newState
+        print(newState)
     }
 
     private func suspicion(timestamp: UInt64) -> Double {

@@ -63,12 +63,14 @@ class GrpcMessagingClient: MessagingClient {
 
     }
 
-    func shutdown(el: EventLoop) throws {
+    func shutdown(el: EventLoop) -> EventLoopFuture<Void> {
         isShuttingDown.store(true)
         let terminations = clients.map { (_, client) in
             client.channel.close().hop(to: el)
         }
-        try _ = EventLoopFuture.whenAllComplete(terminations, on: el).wait()
+        return EventLoopFuture.whenAllComplete(terminations, on: el).map { _ in
+            ()
+        }
     }
 
     private func timeoutForMessage(_ msg: RapidRequest) -> GRPCTimeout {
