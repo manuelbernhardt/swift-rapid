@@ -10,7 +10,7 @@ public struct Settings {
 
     var failureDetectorInterval = TimeAmount.seconds(5)
 
-    var consensusFallbackBaseDelay = TimeAmount.seconds(1)
+    var consensusFallbackBaseDelay = TimeAmount.seconds(10)
 
     var messagingClientDefaultRequestTimeout = TimeAmount.seconds(5)
     var messagingClientJoinRequestTimeout = TimeAmount.seconds(10)

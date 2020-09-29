@@ -340,8 +340,10 @@ final class RapidStateMachine: Actor {
                 decisionCallback: { (endpoints: [Endpoint]) in
                     previousState.this.tell(.viewChangeDecided(endpoints))
                 },
+                messagingClient: common.messagingClient,
                 broadcaster: self.common.broadcaster,
-                settings: self.common.settings
+                settings: self.common.settings,
+                el: self.common.el
             )
 
             // we just got a proposal, directly start the consensus process on it

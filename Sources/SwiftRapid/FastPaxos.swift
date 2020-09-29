@@ -9,7 +9,6 @@ import Logging
 ///
 /// This class is not thread safe
 ///
-/// TODO implement fall back to classic Paxos
 class FastPaxos {
     private let logger = Logger(label: "rapid.FastPaxos")
 
@@ -18,33 +17,46 @@ class FastPaxos {
     private let configurationId: UInt64
     private let membershipSize: Int
     private var wrappedDecisionCallback: ([Endpoint]) -> () = { _ in () }
+    private let messagingClient: MessagingClient
     private let broadcaster: Broadcaster
+    private let el: EventLoop
     private let settings: Settings
 
     private var votesPerProposal = [[Endpoint] : Int]()
     private var receivedVotes = Set<Endpoint>()
+    private let paxos: Paxos
+    private var scheduledClassicRoundTask: Scheduled<Void>?
     private var decided: Bool = false
 
     init(selfEndpoint: Endpoint,
          configurationId: UInt64,
          membershipSize: Int,
          decisionCallback: @escaping ([Endpoint])-> (),
+         messagingClient: MessagingClient,
          broadcaster: Broadcaster,
-         settings: Settings) {
+         settings: Settings,
+         el: EventLoop) {
         self.selfEndpoint = selfEndpoint
         self.configurationId = configurationId
         self.membershipSize = membershipSize
+        self.messagingClient = messagingClient
         self.broadcaster = broadcaster
         self.settings = settings
+        self.el = el
 
         // the rate used to determine a jitter over a base delay to fall back to a classic paxos round
         // given that full paxos is rather verbose in terms of messages it is a good idea not to have all nodes start
         // at the same time
 
         self.fallbackJitterRate = 1 / Double(membershipSize)
+        self.paxos = Paxos(selfEndpoint: selfEndpoint, configurationId: configurationId, N: membershipSize, messagingClient: messagingClient, broadcaster: broadcaster, onDecide: wrappedDecisionCallback)
         self.wrappedDecisionCallback = { endpoints in
             self.decided = true
             decisionCallback(endpoints)
+            if(self.scheduledClassicRoundTask != nil) {
+                self.scheduledClassicRoundTask?.cancel()
+                self.scheduledClassicRoundTask = nil
+            }
         }
     }
 
@@ -64,7 +76,7 @@ class FastPaxos {
     ///               in comparison to the previous configuration
     ///   - fallbackDelayInMs: the delay before falling back to classic paxos
     func propose(proposal: [Endpoint], fallbackDelay: TimeAmount) -> EventLoopFuture<()> {
-        // TODO inform classic paxos we're running a fast round when implementing paxos
+        paxos.registerFastRoundVote(vote: proposal)
 
         let consensusMessage = FastRoundPhase2bMessage.with {
             $0.configurationID = configurationId
@@ -79,7 +91,12 @@ class FastPaxos {
             ()
         }
 
-        // TODO schedule classic round after fallback delay
+        logger.trace("Scheduling classic round with delay: \(fallbackDelay)")
+
+        self.scheduledClassicRoundTask = el.scheduleTask(in: fallbackDelay, {
+            self.paxos.startPhase1a(round: 2)
+        })
+
     }
 
     /// Accepts a proposal message from other nodes for a fast round

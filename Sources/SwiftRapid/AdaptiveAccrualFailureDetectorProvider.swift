@@ -94,7 +94,7 @@ final class AdaptiveAccrualFailureDetectorActor: Actor {
                 }
                 callback?(Result.success(()))
             } else if (firstHeartbeatSent && !fd.isAvailable(at: now) && !hasNotified) {
-                print("\(selfEndpoint.port): Node \(subject.port) failed with a probability of \(fd.suspicion())")
+                //print("\(selfEndpoint.port): Node \(subject.port) failed with a probability of \(fd.suspicion())")
                 callback?(Result.success(signalFailure(subject)))
                 hasNotified = true
             } else if(firstHeartbeatSent && !hasNotified) {
@@ -212,7 +212,6 @@ class AdaptiveAccrualFailureDetector {
 
         let newState = State(intervals: newIntervals, freshnessPoint: timestamp)
         self.state = newState
-        print(newState)
     }
 
     private func suspicion(timestamp: UInt64) -> Double {

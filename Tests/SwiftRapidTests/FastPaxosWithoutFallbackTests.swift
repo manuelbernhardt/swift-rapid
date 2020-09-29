@@ -2,21 +2,23 @@ import XCTest
 import NIO
 @testable import SwiftRapid
 
-class FastPaxosWithoutFallbackTests: XCTestCase {
+class FastPaxosWithoutFallbackTests: XCTestCase, TestClientMessaging {
     let K = 10
     let H = 8
     let L = 3
 
-    var group: EventLoopGroup? = nil
+    var eventLoopGroup: MultiThreadedEventLoopGroup? = nil
+    var clientSettings: Settings = Settings()
 
     override func setUp() {
         super.setUp()
-        group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+        clientSettings = Settings()
+        eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
     }
 
     override func tearDown() {
         super.tearDown()
-        try! group?.syncShutdownGracefully()
+        try! eventLoopGroup?.syncShutdownGracefully()
 
     }
 
@@ -58,7 +60,7 @@ class FastPaxosWithoutFallbackTests: XCTestCase {
         let proposalNode = addressFromParts("127.0.0.1", basePort + 1)
         let view = try createView(basePort: basePort, N: N)
         let settings = Settings()
-        let broadcaster = TestBroadcaster(eventLoop: group!.next())
+        let broadcaster = TestBroadcaster(eventLoop: eventLoopGroup!.next())
 
         var proposal = [Endpoint]()
         var callbackInvoked = false
@@ -66,35 +68,41 @@ class FastPaxosWithoutFallbackTests: XCTestCase {
             callbackInvoked = true
             proposal = endpoints
         }
-        let fastPaxos = FastPaxos(selfEndpoint: node,
-                configurationId: view.getCurrentConfigurationId(),
-                membershipSize: view.getMembershipSize(),
-                decisionCallback:callback,
-                broadcaster: broadcaster,
-                settings: settings
-        )
+        withTestClient { client in
+
+            let fastPaxos = FastPaxos(selfEndpoint: node,
+                    configurationId: view.getCurrentConfigurationId(),
+                    membershipSize: view.getMembershipSize(),
+                    decisionCallback:callback,
+                    messagingClient: client,
+                    broadcaster: broadcaster,
+                    settings: settings,
+                    el: eventLoopGroup!.next()
+            )
 
 
-        for i in 0..<quorum-1 {
-            // this will cause the proposalNode to be removed from the membership once the quorum is reached
-            let msg = FastRoundPhase2bMessage.with {
+            for i in 0..<quorum-1 {
+                // this will cause the proposalNode to be removed from the membership once the quorum is reached
+                let msg = FastRoundPhase2bMessage.with {
+                    $0.endpoints = [proposalNode]
+                    $0.sender = addressFromParts("127.0.0.1", i)
+                    $0.configurationID = view.getCurrentConfigurationId()
+                }
+                fastPaxos.handleFastRoundProposal(proposalMessage: msg)
+                XCTAssertFalse(callbackInvoked)
+            }
+
+            let lastMsg = FastRoundPhase2bMessage.with {
                 $0.endpoints = [proposalNode]
-                $0.sender = addressFromParts("127.0.0.1", i)
+                $0.sender = addressFromParts("127.0.0.1", quorum - 1)
                 $0.configurationID = view.getCurrentConfigurationId()
             }
-            fastPaxos.handleFastRoundProposal(proposalMessage: msg)
-            XCTAssertFalse(callbackInvoked)
-        }
 
-        let lastMsg = FastRoundPhase2bMessage.with {
-            $0.endpoints = [proposalNode]
-            $0.sender = addressFromParts("127.0.0.1", quorum - 1)
-            $0.configurationID = view.getCurrentConfigurationId()
-        }
+            fastPaxos.handleFastRoundProposal(proposalMessage: lastMsg)
+            XCTAssertEqual(1, proposal.count)
+            XCTAssertEqual(proposalNode, proposal.first)
 
-        fastPaxos.handleFastRoundProposal(proposalMessage: lastMsg)
-        XCTAssertEqual(1, proposal.count)
-        XCTAssertEqual(proposalNode, proposal.first)
+        }
     }
 
     /// In this test we simulate two conflicting proposals, each for one node to be removed from the membership view
@@ -107,7 +115,7 @@ class FastPaxosWithoutFallbackTests: XCTestCase {
         let proposalNodeConflict = addressFromParts("127.0.0.1", basePort + 2)
         let view = try createView(basePort: basePort, N: N)
         let settings = Settings()
-        let broadcaster = TestBroadcaster(eventLoop: group!.next())
+        let broadcaster = TestBroadcaster(eventLoop: eventLoopGroup!.next())
 
         var proposal = [Endpoint]()
         var callbackInvoked = false
@@ -115,50 +123,55 @@ class FastPaxosWithoutFallbackTests: XCTestCase {
             callbackInvoked = true
             proposal = endpoints
         }
+        withTestClient { client in
+            let fastPaxos = FastPaxos(selfEndpoint: node,
+                    configurationId: view.getCurrentConfigurationId(),
+                    membershipSize: view.getMembershipSize(),
+                    decisionCallback:callback,
+                    messagingClient: client,
+                    broadcaster: broadcaster,
+                    settings: settings,
+                    el: eventLoopGroup!.next()
+            )
 
-        let fastPaxos = FastPaxos(selfEndpoint: node,
-                configurationId: view.getCurrentConfigurationId(),
-                membershipSize: view.getMembershipSize(),
-                decisionCallback:callback,
-                broadcaster: broadcaster,
-                settings: settings
-        )
-
-        for i in 0..<numConflicts {
-            let conflictMsg = FastRoundPhase2bMessage.with {
-                $0.endpoints = [proposalNodeConflict]
-                $0.sender = addressFromParts("127.0.0.1", i)
-                $0.configurationID = view.getCurrentConfigurationId()
+            for i in 0..<numConflicts {
+                let conflictMsg = FastRoundPhase2bMessage.with {
+                    $0.endpoints = [proposalNodeConflict]
+                    $0.sender = addressFromParts("127.0.0.1", i)
+                    $0.configurationID = view.getCurrentConfigurationId()
+                }
+                fastPaxos.handleFastRoundProposal(proposalMessage: conflictMsg)
+                // no proposal yet
+                XCTAssertFalse(callbackInvoked)
             }
-            fastPaxos.handleFastRoundProposal(proposalMessage: conflictMsg)
-            // no proposal yet
-            XCTAssertFalse(callbackInvoked)
-        }
-        let nonConflictCount = min(numConflicts + quorum - 1, N - 1)
-        for i in numConflicts..<nonConflictCount {
-            let msg = FastRoundPhase2bMessage.with {
+            let nonConflictCount = min(numConflicts + quorum - 1, N - 1)
+            for i in numConflicts..<nonConflictCount {
+                let msg = FastRoundPhase2bMessage.with {
+                    $0.endpoints = [proposalNode]
+                    $0.sender = addressFromParts("127.0.0.1", i)
+                    $0.configurationID = view.getCurrentConfigurationId()
+                }
+                fastPaxos.handleFastRoundProposal(proposalMessage: msg)
+                // no proposal yet
+                XCTAssertFalse(callbackInvoked)
+            }
+
+            // let it cross the quorum for the normal proposal
+            let lastMsg = FastRoundPhase2bMessage.with {
                 $0.endpoints = [proposalNode]
-                $0.sender = addressFromParts("127.0.0.1", i)
+                $0.sender = addressFromParts("127.0.0.1", nonConflictCount)
                 $0.configurationID = view.getCurrentConfigurationId()
             }
-            fastPaxos.handleFastRoundProposal(proposalMessage: msg)
-            // no proposal yet
-            XCTAssertFalse(callbackInvoked)
+            fastPaxos.handleFastRoundProposal(proposalMessage: lastMsg)
+            XCTAssertTrue(callbackInvoked || !changeExpected)
+            if (changeExpected) {
+                XCTAssertEqual(1, proposal.count)
+            } else {
+                XCTAssertEqual(0, proposal.count)
+            }
         }
 
-        // let it cross the quorum for the normal proposal
-        let lastMsg = FastRoundPhase2bMessage.with {
-            $0.endpoints = [proposalNode]
-            $0.sender = addressFromParts("127.0.0.1", nonConflictCount)
-            $0.configurationID = view.getCurrentConfigurationId()
-        }
-        fastPaxos.handleFastRoundProposal(proposalMessage: lastMsg)
-        XCTAssertTrue(callbackInvoked || !changeExpected)
-        if (changeExpected) {
-            XCTAssertEqual(1, proposal.count)
-        } else {
-            XCTAssertEqual(0, proposal.count)
-        }
+
 
     }
 
