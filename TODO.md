@@ -1,0 +1,7 @@
+- proper logging with [swift-log](https://github.com/apple/swift-log)
+- use the `Node` interface of [swift-cluster-membership](https://github.com/apple/swift-cluster-membership)
+- implement tests for the Paxos implementation
+- test more edge cases in `ClusterTests`
+- implement graceful leave
+- implement timeout-based failure mechanism (right now we rely solely on the multi-node cut detection which is more of a fast-path)
+- proper `SortableSet` implementation, now it's mosly a hack that will perform poorly for large clusters
