@@ -2,7 +2,22 @@ import Foundation
 import NIO
 import Logging
 
-/// TODO documentation
+/// The entry point for using SwiftRapid
+/// It uses a "builder" pattern for obtaining new instances, like so:
+///
+/// try RapidCluster.Builder.with {
+///     $0.host = "localhost"
+///     $0.port = 8000
+/// }.start()
+///
+/// or
+///
+/// try RapidCluster.Builder.with {
+///     $0.host = "localhost"
+///     $0.port = 8000
+/// }.join(host: "localhost", port: 8000)
+///
+///
 /// TODO leaving
 /// TODO listener for shutdown
 final public class RapidCluster {
@@ -25,24 +40,34 @@ final public class RapidCluster {
         self.listenAddress = listenAddress
     }
 
+    ///
+    /// Retrieves the endpoint of this cluster
     public func getEndpoint() -> Endpoint {
         self.listenAddress
     }
 
+    ///
+    /// Retrieves the member list
     public func getMemberList() throws -> [Endpoint] {
         try checkIfRunning()
         return try membershipService.getMemberList().wait()
     }
 
+    ///
+    /// Retrieves the members and their metadata
     public func getClusterMetadata() throws -> [Endpoint: Metadata] {
         try checkIfRunning()
         return try membershipService.getMetadata().wait()
     }
 
+    ///
+    /// Leaves the cluster gracefully by communicating intent rather than just leaving and letting the failure detectors take care of it
     public func leaveGracefully() throws {
         fatalError("Not implemented")
     }
 
+    ///
+    /// Shuts the cluster down
     public func shutdown() throws {
         // hmm...
         // TODO this is evidently not the cleanest approach and it is actually buggy

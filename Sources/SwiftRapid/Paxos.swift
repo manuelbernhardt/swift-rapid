@@ -1,14 +1,14 @@
 import Foundation
 import Logging
 
-/**
- *  Single-decree consensus. Implements classic Paxos with the modified rule for the coordinator to pick values as per
- *  the Fast Paxos paper: https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2005-112.pdf
- *
- *  The code below assumes that the first round in a consensus instance (done per configuration change) is the
- *  only round that is a fast round. A round is identified by a tuple (rnd-number, nodeId), where nodeId is a unique
- *  identifier per node that initiates phase1.
- */
+///
+/// Single-decree consensus. Implements classic Paxos with the modified rule for the coordinator to pick values as per
+/// the Fast Paxos paper: https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2005-112.pdf
+///
+/// The code below assumes that the first round in a consensus instance (done per configuration change) is the
+/// only round that is a fast round. A round is identified by a tuple (rnd-number, nodeId), where nodeId is a unique
+/// identifier per node that initiates phase1.
+///
 class Paxos {
     private let logger = Logger(label: "rapid.Paxos")
 

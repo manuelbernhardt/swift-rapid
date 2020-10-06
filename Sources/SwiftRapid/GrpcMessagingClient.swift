@@ -3,7 +3,6 @@ import NIO
 import NIOConcurrencyHelpers
 import GRPC
 
-/// TODO retries
 /// TODO error handling for failing connections? / channels - remove them from the clients dict
 class GrpcMessagingClient: MessagingClient {
 

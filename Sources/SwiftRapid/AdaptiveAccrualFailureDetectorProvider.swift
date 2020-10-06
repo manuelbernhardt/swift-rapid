@@ -2,8 +2,10 @@ import Foundation
 import NIO
 import Dispatch
 
-// FIXME if there has been zero successful probes, we reply that the FD is healthy (to not fail right away)
-// FIXME but if this continues for too long then of course this is wrong. we need a mechanism to take this into account
+/// See "A new adaptive accrual failure detector for dependable distributed systems" by Satzger et al (https://www.semanticscholar.org/paper/A-new-adaptive-accrual-failure-detector-for-systems-Satzger-Pietzowski/8805d522cd6cef723aae55595f918e09914e4316?p2df)
+///
+/// FIXME if there has been zero successful probes, we reply that the FD is healthy (to not fail right away)
+/// FIXME but if this continues for too long then of course this is wrong. we need a mechanism to take this into account
 class AdaptiveAccrualFailureDetectorProvider: EdgeFailureDetectorProvider {
 
     private let messagingClient: MessagingClient

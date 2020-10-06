@@ -7,12 +7,10 @@ import NIOConcurrencyHelpers
 /// one thread will be accessing the underlying resources at the same time, which is useful for interacting
 /// with constructs that are not thread-safe.
 ///
-/// TODO right now working with this is clunky because the initialized actor doesn't know its own reference so implementations
-/// TODO of this protocol have to cater for this in one way or another
+/// Alternatively to "fire-and-forget", the `ask` method can be used in order to interact with an actor and
+/// get an eventual response wrapped in an `EventLoopFuture`
 ///
-/// TODO the actor ref provider should ideally manage the event loops for all actors - maybe. in truth these EL's don't do much,
-/// TODO they are used by the actor ref's ask to provide a promise
-///
+/// TODO right now working with this is clunky because the initialized actor doesn't know its own reference so implementations of this protocol have to cater for this in one way or another
 /// TODO think of a (simple) mechanism by which to simplify the receive (the callback doesn't look all that nice)
 protocol Actor {
     associatedtype MessageType

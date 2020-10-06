@@ -10,13 +10,13 @@ import Logging
 /// Tests common and edge cluster creation / change / failure scenarios
 ///
 /// /!\ Make sure your shell has a high enough open file limit! 1024 won't do at the level of concurrency of this test.
-///     You can change it using e.g. `ulimit -n 10000` on linux
-///
-/// /!\ Remember that Paxos isn't implemented yet as a fallback, make sure to have enough nodes in the tests to satisfy Fast Paxos
+///     You can change it using e.g. `ulimit -n 20000` on linux
 ///
 class ClusterTests: XCTestCase {
 
     let instances = ConcurrentTestDictionary<Endpoint, RapidCluster>()
+
+    var group = MultiThreadedEventLoopGroup(numberOfThreads: 4)
 
     let basePort = 1234
     let portCounter = NIOAtomic.makeAtomic(value: 1235)
@@ -24,6 +24,8 @@ class ClusterTests: XCTestCase {
     var settings = Settings()
 
     var addMetadata = true
+    var useStaticFD = false
+    var staticProvider: StaticFailureDetectorProvider? = nil
 
     override class func setUp() {
         super.setUp()
@@ -35,9 +37,11 @@ class ClusterTests: XCTestCase {
     }
 
     override func setUp() {
+        useStaticFD = false
         Backtrace.install()
         settings = Settings()
         portCounter.store(1235)
+        group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         instances.clear()
     }
 
@@ -45,6 +49,8 @@ class ClusterTests: XCTestCase {
         for instance in instances.values() {
             try! instance.shutdown()
         }
+        staticProvider = nil
+        try! group.syncShutdownGracefully()
     }
 
     func testSingleNodeJoinsThroughSeed() throws {
@@ -129,13 +135,6 @@ class ClusterTests: XCTestCase {
         waitAndVerifyAgreement(expectedSize: numNodes - numFailing, maxTries: 10, interval: 2.0)
     }
 
-
-    /// The problem is that the seed node gets stuck in view changing state
-    /// So then we can not make progress / allow others to join
-    /// It's okay to postpone joiners, but we shuoldn't stay stuck
-    /// Why are we stuck in that state
-    /// Likely because we don't get the necessary votes to switch back?
-    /// ==> We need to implement the timeout-based failire mechanism
     func testConcurrentNodesJoinAndFail() throws {
         useFastFailureDetectorTimeouts()
         let numNodes = 17
@@ -154,6 +153,34 @@ class ClusterTests: XCTestCase {
         sleep(2)
         try! extendCluster(numNodes: numNodesPhase2, seed: seedEndpoint)
         waitAndVerifyAgreement(expectedSize: numNodes - numFailing + numNodesPhase2, maxTries: 20, interval: 2.0)
+    }
+
+    func failRandomQuarterOfNodes() throws {
+        settings.failureDetectorInterval = TimeAmount.milliseconds(500)
+        settings.messagingClientProbeRequestTimeout = TimeAmount.milliseconds(200)
+        useStaticFD = true
+        let numNodes = 40
+        let numFailingNodes = 10
+        let seedEndpoint = addressFromParts("127.0.0.1", basePort)
+        try createCluster(numNodes: numNodes, seedEndpoint: seedEndpoint)
+        verifyCluster(expectedSize: numNodes)
+        print("Cluster formed")
+        var failingNodes = [Endpoint]()
+        while failingNodes.count != numFailingNodes {
+            let node = instances.keys().randomElement()!
+            if (!failingNodes.contains(node)) {
+                failingNodes.append(node)
+                staticProvider?.addFailedNode(node: node)
+            }
+        }
+        for node in failingNodes {
+            try! instances.get(key: node)?.shutdown()
+            print("Down")
+            instances.remove(key: node)
+        }
+        waitAndVerifyAgreement(expectedSize: numNodes - failingNodes.count, maxTries: 20, interval: 1000)
+        XCTAssertEqual(numNodes - failingNodes.count, instances.values().count)
+
     }
 
 
@@ -227,6 +254,10 @@ class ClusterTests: XCTestCase {
             $0.host = String(decoding: endpoint.hostname, as: UTF8.self)
             $0.port = Int(endpoint.port)
             $0.settings = settings
+            if(useStaticFD) {
+                staticProvider = StaticFailureDetectorProvider(el: group.next())
+                $0.edgeFailureDetectorProvider = staticProvider
+            }
             if (addMetadata) {
                 $0.metadata = Metadata.with {
                     $0.metadata = ["Key": endpoint.textFormatString().data(using: .utf8)!]
@@ -288,7 +319,8 @@ class ClusterTests: XCTestCase {
         ("testFiftyNodesJoinTwentyNodeCluster", testFiftyNodesJoinTwentyNodeCluster),
         ("testOneNodeFails", testOneNodeFails),
         ("testThreeNodeFail", testThreeNodeFail),
-        ("testConcurrentNodesJoinAndFail", testConcurrentNodesJoinAndFail)
+        ("testConcurrentNodesJoinAndFail", testConcurrentNodesJoinAndFail),
+        ("failRandomQuarterOfNodes", failRandomQuarterOfNodes)
     ]
 
 }
@@ -324,6 +356,12 @@ class ConcurrentTestDictionary<K, V> where K: Hashable {
         }
     }
 
+    func keys() -> [K] {
+        queue.sync() {
+            Array(self.dictionary.keys)
+        }
+    }
+
     func clear() {
         queue.async(flags: .barrier) {
             self.dictionary = [:]
@@ -331,3 +369,27 @@ class ConcurrentTestDictionary<K, V> where K: Hashable {
     }
 
 }
+
+class StaticFailureDetectorProvider: EdgeFailureDetectorProvider {
+
+    private let el: EventLoop
+    private var failedNodes = [Endpoint]()
+
+    init(el: EventLoop) {
+        self.el = el
+    }
+
+    func createInstance(subject: Endpoint, signalFailure: @escaping (Endpoint) -> ()) throws -> () -> EventLoopFuture<()> {
+        {
+            if (self.failedNodes.contains(subject)) {
+                signalFailure(subject)
+            }
+            return self.el.makeSucceededFuture(())
+        }
+    }
+
+    func addFailedNode(node: Endpoint) {
+        failedNodes.append(node)
+    }
+}
+

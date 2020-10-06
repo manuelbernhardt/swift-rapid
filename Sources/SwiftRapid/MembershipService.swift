@@ -2,6 +2,7 @@ import Foundation
 import NIO
 import NIOConcurrencyHelpers
 
+/// The API of the Rapid membership service
 public protocol MembershipService {
 
     func handleRequest(request: RapidRequest) -> EventLoopFuture<RapidResponse>

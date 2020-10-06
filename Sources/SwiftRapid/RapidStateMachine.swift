@@ -5,7 +5,6 @@ import Logging
 
 /// TODO
 /// - graceful leaving of this node
-/// - API and callbacks for membership change
 /// - implement missing cut detection recovery if fast path fails (timeout on unstable reports / implicit detection)
 final class RapidStateMachine: Actor {
     private let logger = Logger(label: "rapid.RapidStateMachine")
